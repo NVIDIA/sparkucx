@@ -17,7 +17,7 @@ import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
 
 /**
- * Extension of Spark's shuffe reader with a logic of injection UcxShuffleClient,
+ * Extension of Spark's shuffle reader with a logic of injection UcxShuffleClient,
  * and lazy progress only when result queue is empty.
  */
 class UcxShuffleReader[K, C](handle: UcxShuffleHandle[K, _, C],

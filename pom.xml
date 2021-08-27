@@ -10,7 +10,7 @@ See file LICENSE for terms.
                       http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.openucx</groupId>
-  <artifactId>spark-ucx</artifactId>
+  <artifactId>ucx-spark</artifactId>
   <version>1.0</version>
   <name>${project.artifactId}</name>
   <description>
@@ -149,7 +149,7 @@ See file LICENSE for terms.
     <dependency>
       <groupId>org.openucx</groupId>
       <artifactId>jucx</artifactId>
-      <version>1.11.0-rc3</version>
+      <version>1.11</version>
     </dependency>
   </dependencies>
 
