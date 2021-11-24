@@ -26,7 +26,7 @@ NODELIST=${NODELIST:="localhost"}
 
 UCX_LIB=${UCX_LIB:=${LD_LIBRARY_PATH}}
 
-SPARK_UCX_JAR=${SPARK_UCX_JAR:=$PWD/spark-ucx-1.0-for-spark-2.4-jar-with-dependencies.jar}
+SPARK_UCX_JAR=${SPARK_UCX_JAR:=$PWD/spark-ucx-1.1-for-spark-2.4-jar-with-dependencies.jar}
 
 PROCESSES_PER_INSTANCE=${PROCESSES_PER_INSTANCE:=2}
 
@@ -106,7 +106,7 @@ build_ucx() {
     git clone -b ${UCX_BRANCH} --depth=1 https://github.com/openucx/ucx.git && cd ucx
     ./autogen.sh
     mkdir build && cd build
-    ../contrib/configure-release-mt --with-java --prefix=$PWD
+    ../contrib/configure-release-mt --prefix=$PWD
     make -j `nproc`
     make install
     UCX_LIB=$PWD/lib/
@@ -115,15 +115,16 @@ build_ucx() {
 setup_configuration() {
     mkdir -p ${SPARK_CONF_DIR}
 
-    echo ${NODELIST} | tr -s ' ' '\n' >> "${SPARK_CONF_DIR}/slaves"
+    echo ${NODELIST} | tr -s ' ' '\n' > "${SPARK_CONF_DIR}/slaves"
 
     cat <<-EOF > ${SPARK_CONF_DIR}/spark-defaults.conf
 	spark.shuffle.manager org.apache.spark.shuffle.UcxShuffleManager
-	spark.shuffle.sort.io.plugin.class org.apache.spark.shuffle.compat.spark_3_0.UcxLocalDiskShuffleDataIO
 	spark.shuffle.readHostLocalDisk.enabled false
-	spark.driver.extraClassPath ${SPARK_UCX_JAR}:${UCX_LIB}
-	spark.executor.extraClassPath ${SPARK_UCX_JAR}:${UCX_LIB}
+	spark.driver.extraClassPath ${SPARK_UCX_JAR}
+	spark.executor.extraClassPath ${SPARK_UCX_JAR}:${UCX_LIB}:${UCX_LIB}/ucx
 	spark.shuffle.ucx.driver.port $(( ${SPARK_MASTER_PORT} + 1 ))
+	spark.executorEnv.UCX_ERROR_SIGNALS ""
+	spark.executorEnv.UCX_LOG_LEVEL trace
 	EOF
 
     cat <<-EOF > ${SPARK_CONF_DIR}/spark-env.sh

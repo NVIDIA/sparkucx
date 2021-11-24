@@ -6,11 +6,8 @@ package org.apache.spark.shuffle.compat.spark_3_0
 
 import java.io.{File, RandomAccessFile}
 
-import org.apache.spark.{SparkEnv, TaskContext}
-import org.apache.spark.network.shuffle.ExecutorDiskUtils
-import org.apache.spark.shuffle.IndexShuffleBlockResolver.NOOP_REDUCE_ID
-import org.apache.spark.shuffle.{CommonUcxShuffleBlockResolver, CommonUcxShuffleManager}
-import org.apache.spark.storage.ShuffleIndexBlockId
+import org.apache.spark.TaskContext
+import org.apache.spark.shuffle.ucx.{CommonUcxShuffleBlockResolver, CommonUcxShuffleManager}
 
 /**
  * Mapper entry point for UcxShuffle plugin. Performs memory registration
@@ -19,16 +16,6 @@ import org.apache.spark.storage.ShuffleIndexBlockId
 class UcxShuffleBlockResolver(ucxShuffleManager: CommonUcxShuffleManager)
   extends CommonUcxShuffleBlockResolver(ucxShuffleManager) {
 
-  private def getIndexFile(
-                            shuffleId: Int,
-                            mapId: Long,
-                            dirs: Option[Array[String]] = None): File = {
-    val blockId = ShuffleIndexBlockId(shuffleId, mapId, NOOP_REDUCE_ID)
-    val blockManager = SparkEnv.get.blockManager
-    dirs
-      .map(ExecutorDiskUtils.getFile(_, blockManager.subDirsPerLocalDir, blockId.name))
-      .getOrElse(blockManager.diskBlockManager.getFile(blockId))
-  }
 
   override def writeIndexFileAndCommit(shuffleId: ShuffleId, mapId: Long,
                                        lengths: Array[Long], dataTmp: File): Unit = {
@@ -37,16 +24,9 @@ class UcxShuffleBlockResolver(ucxShuffleManager: CommonUcxShuffleManager)
     // in metadata buffer
     val partitionId = TaskContext.getPartitionId()
     val dataFile = getDataFile(shuffleId, mapId)
-    val dataBackFile = new RandomAccessFile(dataFile, "rw")
-
-    if (dataBackFile.length() == 0) {
-      dataBackFile.close()
+    if (!dataFile.exists() || dataFile.length() == 0) {
       return
     }
-
-    val indexFile = getIndexFile(shuffleId, mapId)
-    val indexBackFile = new RandomAccessFile(indexFile, "rw")
-
-    writeIndexFileAndCommitCommon(shuffleId, partitionId, lengths, dataTmp, indexBackFile, dataBackFile)
+    writeIndexFileAndCommitCommon(shuffleId, partitionId, lengths, new RandomAccessFile(dataFile, "r"))
   }
 }

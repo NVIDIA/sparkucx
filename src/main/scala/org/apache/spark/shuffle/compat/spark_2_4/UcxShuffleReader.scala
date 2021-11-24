@@ -10,8 +10,8 @@ import java.util.concurrent.LinkedBlockingQueue
 import org.apache.spark.{InterruptibleIterator, MapOutputTracker, SparkEnv, TaskContext}
 import org.apache.spark.internal.{Logging, config}
 import org.apache.spark.serializer.SerializerManager
-import org.apache.spark.shuffle.{ShuffleReader, UcxShuffleHandle, UcxShuffleManager}
-import org.apache.spark.shuffle.ucx.reducer.compat.spark_2_4.UcxShuffleClient
+import org.apache.spark.shuffle.ucx.UcxShuffleTransport
+import org.apache.spark.shuffle.{BaseShuffleHandle, ShuffleReader}
 import org.apache.spark.storage.{BlockId, BlockManager, ShuffleBlockFetcherIterator}
 import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
@@ -20,23 +20,22 @@ import org.apache.spark.util.collection.ExternalSorter
  * Extension of Spark's shuffle reader with a logic of injection UcxShuffleClient,
  * and lazy progress only when result queue is empty.
  */
-class UcxShuffleReader[K, C](handle: UcxShuffleHandle[K, _, C],
-  startPartition: Int,
-  endPartition: Int,
-  context: TaskContext,
-  serializerManager: SerializerManager = SparkEnv.get.serializerManager,
-  blockManager: BlockManager = SparkEnv.get.blockManager,
-  mapOutputTracker: MapOutputTracker = SparkEnv.get.mapOutputTracker)
+class UcxShuffleReader[K, C](handle: BaseShuffleHandle[K, _, C],
+                             startPartition: Int,
+                             endPartition: Int,
+                             context: TaskContext,
+                             transport: UcxShuffleTransport,
+                             serializerManager: SerializerManager = SparkEnv.get.serializerManager,
+                             blockManager: BlockManager = SparkEnv.get.blockManager,
+                             mapOutputTracker: MapOutputTracker = SparkEnv.get.mapOutputTracker)
   extends ShuffleReader[K, C] with Logging {
 
-    private val dep = handle.baseHandle.dependency
+    private val dep = handle.dependency
 
     /** Read the combined key-values for this reduce task */
     override def read(): Iterator[Product2[K, C]] = {
       val shuffleMetrics = context.taskMetrics().createTempShuffleReadMetrics()
-      val workerWrapper = SparkEnv.get.shuffleManager.asInstanceOf[UcxShuffleManager]
-        .ucxNode.getThreadLocalWorker
-      val shuffleClient = new UcxShuffleClient(shuffleMetrics, workerWrapper)
+      val shuffleClient = new UcxShuffleClient(transport)
       val wrappedStreams = new ShuffleBlockFetcherIterator(
         context,
         shuffleClient,
@@ -45,7 +44,7 @@ class UcxShuffleReader[K, C](handle: UcxShuffleHandle[K, _, C],
           startPartition, endPartition),
         serializerManager.wrapStream,
         // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
-        SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024,
+        SparkEnv.get.conf.getSizeAsBytes("spark.reducer.maxSizeInFlight", "48m"),
         SparkEnv.get.conf.getInt("spark.reducer.maxReqsInFlight", Int.MaxValue),
         SparkEnv.get.conf.get(config.REDUCER_MAX_BLOCKS_IN_FLIGHT_PER_ADDRESS),
         SparkEnv.get.conf.get(config.MAX_REMOTE_BLOCK_SIZE_FETCH_TO_MEM),
@@ -62,7 +61,9 @@ class UcxShuffleReader[K, C](handle: UcxShuffleHandle[K, _, C],
       val ucxWrappedStream = new Iterator[(BlockId, InputStream)] {
         override def next(): (BlockId, InputStream) = {
           val startTime = System.currentTimeMillis()
-          workerWrapper.fillQueueWithBlocks(resultQueue)
+          while (resultQueue.isEmpty) {
+            transport.progress()
+          }
           shuffleMetrics.incFetchWaitTime(System.currentTimeMillis() - startTime)
           wrappedStreams.next()
         }

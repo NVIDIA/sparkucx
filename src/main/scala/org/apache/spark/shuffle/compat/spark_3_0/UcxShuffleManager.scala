@@ -7,33 +7,26 @@ package org.apache.spark.shuffle
 import scala.collection.JavaConverters._
 
 import org.apache.spark.shuffle.api.ShuffleExecutorComponents
-import org.apache.spark.shuffle.compat.spark_3_0.{UcxShuffleBlockResolver, UcxShuffleReader}
+import org.apache.spark.shuffle.compat.spark_3_0.{UcxLocalDiskShuffleExecutorComponents, UcxShuffleBlockResolver, UcxShuffleReader}
 import org.apache.spark.shuffle.sort.{SerializedShuffleHandle, SortShuffleWriter, UnsafeShuffleWriter}
-import org.apache.spark.util.ShutdownHookManager
-import org.apache.spark.{ShuffleDependency, SparkConf, SparkEnv, TaskContext}
+import org.apache.spark.shuffle.ucx.CommonUcxShuffleManager
+import org.apache.spark.{SparkConf, SparkEnv, TaskContext}
 
 /**
  * Main entry point of Ucx shuffle plugin. It extends spark's default SortShufflePlugin
  * and injects needed logic in override methods.
  */
-class UcxShuffleManager(override val conf: SparkConf, isDriver: Boolean) extends CommonUcxShuffleManager(conf, isDriver) {
-  ShutdownHookManager.addShutdownHook(Int.MaxValue - 1)(stop)
+class UcxShuffleManager(override val conf: SparkConf, isDriver: Boolean)
+  extends CommonUcxShuffleManager(conf, isDriver) {
+
   private lazy val shuffleExecutorComponents = loadShuffleExecutorComponents(conf)
 
   override val shuffleBlockResolver = new UcxShuffleBlockResolver(this)
 
-  override def registerShuffle[K, V, C](shuffleId: ShuffleId, dependency: ShuffleDependency[K, V, C]): ShuffleHandle = {
-    assume(isDriver)
-    val numMaps = dependency.partitioner.numPartitions
-    val baseHandle = super.registerShuffle(shuffleId, dependency).asInstanceOf[BaseShuffleHandle[K, V, C]]
-    registerShuffleCommon(baseHandle, shuffleId, numMaps)
-  }
-
-  override def getWriter[K, V](handle: ShuffleHandle, mapId: Long, context: TaskContext,
+  override def getWriter[K, V](handle: ShuffleHandle, mapId: ReduceId, context: TaskContext,
                                metrics: ShuffleWriteMetricsReporter): ShuffleWriter[K, V] = {
-    shuffleIdToHandle.putIfAbsent(handle.shuffleId, handle.asInstanceOf[UcxShuffleHandle[K, V, _]])
     val env = SparkEnv.get
-    handle.asInstanceOf[UcxShuffleHandle[K, V, _]].baseHandle match {
+    handle match {
       case unsafeShuffleHandle: SerializedShuffleHandle[K@unchecked, V@unchecked] =>
         new UnsafeShuffleWriter(
           env.blockManager,
@@ -52,16 +45,12 @@ class UcxShuffleManager(override val conf: SparkConf, isDriver: Boolean) extends
 
   override def getReader[K, C](handle: ShuffleHandle, startPartition: MapId, endPartition: MapId,
                                context: TaskContext, metrics: ShuffleReadMetricsReporter): ShuffleReader[K, C] = {
-
-    startUcxNodeIfMissing()
-    shuffleIdToHandle.putIfAbsent(handle.shuffleId, handle.asInstanceOf[UcxShuffleHandle[K, _, C]])
-    new UcxShuffleReader(handle.asInstanceOf[UcxShuffleHandle[K,_,C]], startPartition, endPartition,
-      context, readMetrics = metrics, shouldBatchFetch = true)
+    new UcxShuffleReader(handle.asInstanceOf[BaseShuffleHandle[K,_,C]], startPartition, endPartition,
+      context, ucxTransport, readMetrics = metrics, shouldBatchFetch = false)
   }
 
-
   private def loadShuffleExecutorComponents(conf: SparkConf): ShuffleExecutorComponents = {
-    val executorComponents = ShuffleDataIOUtils.loadShuffleDataIO(conf).executor()
+    val executorComponents = new UcxLocalDiskShuffleExecutorComponents(conf)
     val extraConfigs = conf.getAllWithPrefix(ShuffleDataIOUtils.SHUFFLE_SPARK_CONF_PREFIX)
       .toMap
     executorComponents.initializeExecutor(

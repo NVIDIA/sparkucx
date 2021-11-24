@@ -37,7 +37,7 @@ stages:
               mavenSetM2Home: true
               publishJUnitResults: false
               goals: "clean package"
-              options: "-B  -Dmaven.repo.local=$(System.DefaultWorkingDirectory)/target/.deps -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn -Pspark-$(profile_version)"
+              options: "-B -Dmaven.repo.local=$(System.DefaultWorkingDirectory)/target/.deps -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn -Pspark-$(profile_version)"
           - bash: |
               set -xeE
               module load dev/jdk-1.8 tools/spark-$(spark_version) 
@@ -45,11 +45,9 @@ stages:
 
               if [[ $(get_rdma_device_iface) != "" ]]
               then
-                export UCX_BRANCH=v1.12.x
-                export SPARK_UCX_JAR=$(System.DefaultWorkingDirectory)/target/ucx-spark-1.0-for-spark-$(profile_version)-jar-with-dependencies.jar
+                export SPARK_UCX_JAR=$(System.DefaultWorkingDirectory)/target/ucx-spark-1.1-for-spark-$(profile_version)-jar-with-dependencies.jar
                 export SPARK_LOCAL_DIRS=$(System.DefaultWorkingDirectory)/target/spark
                 export SPARK_VERSION=$(spark_version)
-                export UCX_LIB=$HPCX_UCX_DIR/lib
                 cd $(System.DefaultWorkingDirectory)/target/
                 run_tests
               else
