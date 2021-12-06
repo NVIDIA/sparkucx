@@ -24,21 +24,18 @@ stages:
           name: MLNX
           demands: Maven
         steps:
-          - task: Maven@3
-            displayName:  build
-            inputs:
-              javaHomeOption: "path"
-              jdkDirectory: "/hpc/local/oss/java/jdk/"
-              jdkVersionOption: "1.8"
-              mavenVersionSelection: "Path"
-              mavenPath: "/hpc/local/oss/apache-maven-3.3.9"
-              mavenSetM2Home: true
-              publishJUnitResults: false
-              goals: "package"
-              options: "-B  -Dmaven.repo.local=$(System.DefaultWorkingDirectory)/target/.deps -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn -Pspark-$(profile_version)"
+          - checkout: self
+            fetchDepth: 100
+            clean: true
+            displayName: Checkout
+          - bash: |
+              set -xeE
+              module load dev/mvn dev/jdk
+              mvn -B  -Dmaven.repo.local=$(System.DefaultWorkingDirectory)/target/.deps -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn -Pspark-$(profile_version) package
           - bash: |
               set -xeE
               module load tools/spark-$(spark_version) hpcx-gcc
+              ls -al $(System.DefaultWorkingDirectory)/target/spark-ucx-1.0-for-spark-$(profile_version)-jar-with-dependencies.jar
               source buildlib/test.sh
 
               if [[ $(get_rdma_device_iface) != "" ]]
