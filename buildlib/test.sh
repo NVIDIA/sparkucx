@@ -165,6 +165,12 @@ run_groupby_test() {
         org.apache.spark.examples.GroupByTest 100 100
 }
 
+run_big_test() {
+    ${SPARK_HOME}/bin/run-example --verbose --master spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT} \
+        --jars "${SPARK_HOME}/examples/jars/*.jar" --executor-memory ${SPARK_WORKER_MEMORY} \
+        org.apache.spark.examples.GroupByTest 200 5000 25000 200
+}
+
 run_tc_test() {
     ${SPARK_HOME}/bin/run-example --verbose --master spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT} \
         --jars "${SPARK_HOME}/examples/jars/*.jar" --executor-memory ${SPARK_WORKER_MEMORY} \

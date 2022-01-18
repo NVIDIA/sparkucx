@@ -22,7 +22,9 @@ stages:
               spark_version: "3.0.1"
         pool:
           name: MLNX
-          demands: Maven
+          demands:
+          - Maven
+          - ucx_docker -equals yes
         steps:
           - task: Maven@3
             displayName:  build
