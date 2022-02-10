@@ -31,7 +31,7 @@ jobs:
             -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn \
             --file pom.xml
             cd target
-            echo "::set-output name=jar_name::$(echo spark-ucx-*-jar-with-dependencies.jar)"
+            echo "::set-output name=jar_name::$(echo ucx-spark-*-jar-with-dependencies.jar)"
 
         - name: Upload Release Jars
           uses: svenstaro/upload-release-action@v1-release
