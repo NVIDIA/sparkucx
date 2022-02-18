@@ -25,6 +25,7 @@ class GlobalWorkerRpcThread(globalWorker: UcpWorker, transport: UcxShuffleTransp
       private val startTag = UnsafeUtils.getByteBufferView(headerAddress, headerSize.toInt).getInt
       private val data = UnsafeUtils.getByteBufferView(amData.getDataAddress, amData.getLength.toInt)
       private val ep = replyEp
+
       override def run(): Unit = {
        transport.handleFetchBlockRequest(startTag, data, ep)
       }

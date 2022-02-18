@@ -13,7 +13,7 @@ import scala.util.Random
 import org.openucx.jucx.ucp._
 import org.openucx.jucx.ucs.UcsConstants
 import org.openucx.jucx.ucs.UcsConstants.MEMORY_TYPE
-import org.openucx.jucx.{UcxCallback, UcxException, UcxUtils}
+import org.openucx.jucx.{UcxCallback, UcxException}
 import org.apache.spark.internal.Logging
 import org.apache.spark.shuffle.ucx.utils.SerializationUtils
 import org.apache.spark.shuffle.utils.UnsafeUtils
@@ -51,7 +51,7 @@ class UcxWorkerWrapper(val worker: UcpWorker, val transport: UcxShuffleTransport
   // Receive block data handler
   worker.setAmRecvHandler(1,
     (headerAddress: Long, headerSize: Long, ucpAmData: UcpAmData, _: UcpEndpoint) => {
-      val headerBuffer = UcxUtils.getByteBufferView(headerAddress, headerSize)
+      val headerBuffer = UnsafeUtils.getByteBufferView(headerAddress, headerSize.toInt)
       val i = headerBuffer.getInt(0)
       val data = requestData.remove(i)
 
@@ -89,7 +89,7 @@ class UcxWorkerWrapper(val worker: UcpWorker, val transport: UcxShuffleTransport
           override def onSuccess(r: UcpRequest): Unit = {
             request.completed = true
             stats.endTime = System.nanoTime()
-            logInfo(s"Received rndv data of size: ${mem.size} for tag $i in " +
+            logDebug(s"Received rndv data of size: ${mem.size} for tag $i in " +
               s"${stats.getElapsedTimeNs} ns " +
               s"time from amHandle: ${System.nanoTime() - stats.amHandleTime} ns")
             callback.onComplete(new OperationResult {
