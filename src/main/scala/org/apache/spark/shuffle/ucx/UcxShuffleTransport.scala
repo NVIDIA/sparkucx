@@ -17,7 +17,7 @@ import org.openucx.jucx.ucs.UcsConstants.MEMORY_TYPE
 import org.openucx.jucx.{UcxCallback, UcxUtils}
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
-import org.apache.spark.shuffle.ucx.memory.UcxHostBounceBuffersPool
+import org.apache.spark.shuffle.ucx.memory.{UcxBounceBufferMemoryBlock, UcxHostBounceBuffersPool}
 import org.apache.spark.shuffle.ucx.rpc.GlobalWorkerRpcThread
 import org.apache.spark.shuffle.ucx.utils.{SerializableDirectBuffer, SerializationUtils}
 
@@ -280,7 +280,7 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
 
     val blocks = blockIds.map(bid => registeredBlocks(bid))
     val resultMemory = hostBounceBufferMemoryPool.get(4 * blockIds.length
-      + blocks.map(_.getSize).sum)
+      + blocks.map(_.getSize).sum).asInstanceOf[UcxBounceBufferMemoryBlock]
     val resultBuffer = UcxUtils.getByteBufferView(resultMemory.address,
       resultMemory.size)
     val outstandingRequests = new AtomicInteger(blockIds.length)
@@ -303,7 +303,8 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
             logTrace(s"Sent ${blockIds(i)} to tag ${startTag + i} " +
               s"in ${System.nanoTime() - startTime} ns.")
           }
-        }, MEMORY_TYPE.UCS_MEMORY_TYPE_HOST)
+        }, new UcpRequestParams().setMemoryType(UcsConstants.MEMORY_TYPE.UCS_MEMORY_TYPE_HOST)
+          .setMemoryHandle(resultMemory.memory))
     }
   } catch {
     case ex: Exception => logError(ex.getLocalizedMessage)

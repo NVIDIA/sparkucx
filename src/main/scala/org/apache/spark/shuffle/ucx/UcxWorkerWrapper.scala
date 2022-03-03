@@ -15,6 +15,7 @@ import org.openucx.jucx.ucs.UcsConstants
 import org.openucx.jucx.ucs.UcsConstants.MEMORY_TYPE
 import org.openucx.jucx.{UcxCallback, UcxException}
 import org.apache.spark.internal.Logging
+import org.apache.spark.shuffle.ucx.memory.UcxBounceBufferMemoryBlock
 import org.apache.spark.shuffle.ucx.utils.SerializationUtils
 import org.apache.spark.shuffle.utils.UnsafeUtils
 import org.apache.spark.unsafe.Platform
@@ -102,7 +103,8 @@ class UcxWorkerWrapper(val worker: UcpWorker, val transport: UcxShuffleTransport
               override def getData: MemoryBlock = mem
             })
           }
-        }, UcsConstants.MEMORY_TYPE.UCS_MEMORY_TYPE_HOST))
+        }, new UcpRequestParams().setMemoryType(UcsConstants.MEMORY_TYPE.UCS_MEMORY_TYPE_HOST)
+            .setMemoryHandle(mem.asInstanceOf[UcxBounceBufferMemoryBlock].memory)))
         UcsConstants.STATUS.UCS_OK
       }
     }, UcpConstants.UCP_AM_FLAG_PERSISTENT_DATA | UcpConstants.UCP_AM_FLAG_WHOLE_MSG)
