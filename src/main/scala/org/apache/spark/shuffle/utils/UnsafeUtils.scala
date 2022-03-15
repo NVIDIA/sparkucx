@@ -13,6 +13,7 @@ import sun.nio.ch.{DirectBuffer, FileChannelImpl}
 import org.apache.spark.internal.Logging
 
 object UnsafeUtils extends Logging {
+  val INT_SIZE: Int = 4
   private val mmap = classOf[FileChannelImpl].getDeclaredMethod("map0", classOf[Int], classOf[Long], classOf[Long])
   mmap.setAccessible(true)
 

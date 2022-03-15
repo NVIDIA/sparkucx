@@ -16,14 +16,19 @@ class UcxShuffleClient(val transport: UcxShuffleTransport, mapId2PartitionId: Ma
   override def fetchBlocks(host: String, port: Int, execId: String, blockIds: Array[String],
                            listener: BlockFetchingListener,
                            downloadFileManager: DownloadFileManager): Unit = {
+    if (blockIds.length > transport.ucxShuffleConf.maxBlocksPerRequest) {
+      val (b1, b2) = blockIds.splitAt(blockIds.length / 2)
+      fetchBlocks(host, port, execId, b1, listener, downloadFileManager)
+      fetchBlocks(host, port, execId, b2, listener, downloadFileManager)
+      return
+    }
+
     val ucxBlockIds = Array.ofDim[UcxShuffleBockId](blockIds.length)
     val callbacks = Array.ofDim[OperationCallback](blockIds.length)
     for (i <- blockIds.indices) {
       val blockId = SparkBlockId.apply(blockIds(i)).asInstanceOf[SparkShuffleBlockId]
       ucxBlockIds(i) = UcxShuffleBockId(blockId.shuffleId, mapId2PartitionId(blockId.mapId), blockId.reduceId)
       callbacks(i) = (result: OperationResult) => {
-        logInfo(s"Received ${ucxBlockIds(i)} " +
-          s"in ${result.getStats.get.getElapsedTimeNs} ns")
         val memBlock = result.getData
         val buffer = UnsafeUtils.getByteBufferView(memBlock.address, memBlock.size.toInt)
         listener.onBlockFetchSuccess(blockIds(i), new NioManagedBuffer(buffer) {

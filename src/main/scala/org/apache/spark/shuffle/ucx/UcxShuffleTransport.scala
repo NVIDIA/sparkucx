@@ -6,20 +6,22 @@ package org.apache.spark.shuffle.ucx
 
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
-import java.util.concurrent.atomic.AtomicInteger
 
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
+import scala.collection.parallel.ForkJoinTaskSupport
 
 import org.openucx.jucx.ucp._
 import org.openucx.jucx.ucs.UcsConstants
 import org.openucx.jucx.ucs.UcsConstants.MEMORY_TYPE
-import org.openucx.jucx.{UcxCallback, UcxUtils}
+import org.openucx.jucx.{UcxCallback, UcxException, UcxUtils}
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
 import org.apache.spark.shuffle.ucx.memory.UcxHostBounceBuffersPool
 import org.apache.spark.shuffle.ucx.rpc.GlobalWorkerRpcThread
 import org.apache.spark.shuffle.ucx.utils.{SerializableDirectBuffer, SerializationUtils}
+import org.apache.spark.shuffle.utils.UnsafeUtils
+import org.apache.spark.util.ThreadUtils
 
 class UcxRequest(private var request: UcpRequest, stats: OperationStats)
   extends Request {
@@ -96,6 +98,9 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
   private val registeredBlocks = new TrieMap[BlockId, Block]
   private var progressThread: Thread = _
   var hostBounceBufferMemoryPool: UcxHostBounceBuffersPool = _
+  private val threadPool = ThreadUtils.newForkJoinPool("IO threads",
+    ucxShuffleConf.numIoThreads)
+  private val taskSupport = new ForkJoinTaskSupport(threadPool)
 
   private val errorHandler = new UcpEndpointErrorHandler {
     override def onError(ucpEndpoint: UcpEndpoint, errorCode: Int, errorString: String): Unit = {
@@ -191,6 +196,7 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
         ucxContext.close()
         ucxContext = null
       }
+      threadPool.shutdown()
     }
   }
 
@@ -204,7 +210,7 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
   }
 
   def addExecutors(executorIdsToAddress: Map[ExecutorId, SerializableDirectBuffer]): Unit = {
-    executorIdsToAddress.foreach{
+    executorIdsToAddress.foreach {
       case (executorId, address) => executorAddresses.put(executorId, address.value)
     }
   }
@@ -252,7 +258,7 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
   }
 
   def unregisterShuffle(shuffleId: Int): Unit = {
-    registeredBlocks.keysIterator.foreach{
+    registeredBlocks.keysIterator.foreach {
       case bid@UcxShuffleBockId(sid, _, _) if sid == shuffleId => registeredBlocks.remove(bid)
     }
   }
@@ -271,42 +277,54 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
       .fetchBlocksByBlockIds(executorId, blockIds, resultBufferAllocator, callbacks)
   }
 
-  def handleFetchBlockRequest(startTag: Int, buffer: ByteBuffer, replyEp: UcpEndpoint): Unit = try {
+  def handleFetchBlockRequest(replyTag: Int, buffer: ByteBuffer, replyEp: UcpEndpoint): Unit = try {
     val blockIds = mutable.ArrayBuffer.empty[BlockId]
 
+    // 1. Deserialize blockIds from header
     while (buffer.remaining() > 0) {
-      blockIds += UcxShuffleBockId.deserialize(buffer)
+      val blockId = UcxShuffleBockId.deserialize(buffer)
+      if (!registeredBlocks.contains(blockId)) {
+        throw new UcxException(s"$blockId is not registered")
+      }
+      blockIds += blockId
     }
 
     val blocks = blockIds.map(bid => registeredBlocks(bid))
-    val resultMemory = hostBounceBufferMemoryPool.get(4 * blockIds.length
-      + blocks.map(_.getSize).sum)
+    val tagAndSizes = UnsafeUtils.INT_SIZE + UnsafeUtils.INT_SIZE * blockIds.length
+    val resultMemory = hostBounceBufferMemoryPool.get(tagAndSizes + blocks.map(_.getSize).sum)
     val resultBuffer = UcxUtils.getByteBufferView(resultMemory.address,
       resultMemory.size)
-    val outstandingRequests = new AtomicInteger(blockIds.length)
+    resultBuffer.putInt(replyTag)
 
-    for ((block, i) <- blocks.zipWithIndex) {
-      val headerAddress = resultMemory.address + resultBuffer.position()
-      resultBuffer.putInt(startTag + i)
-      val localBuffer = resultBuffer.slice()
-      localBuffer.limit(block.getSize.toInt)
-      block.getBlock(localBuffer)
-      resultBuffer.position(resultBuffer.position() + block.getSize.toInt)
-
-      val startTime = System.nanoTime()
-      replyEp.sendAmNonBlocking(1, headerAddress, 4L,
-        headerAddress + 4, block.getSize, 0, new UcxCallback {
-          override def onSuccess(request: UcpRequest): Unit = {
-            if (outstandingRequests.decrementAndGet() == 0) {
-              hostBounceBufferMemoryPool.put(resultMemory)
-            }
-            logTrace(s"Sent ${blockIds(i)} to tag ${startTag + i} " +
-              s"in ${System.nanoTime() - startTime} ns.")
-          }
-        }, MEMORY_TYPE.UCS_MEMORY_TYPE_HOST)
+    var offset = 0
+    val localBuffers = blocks.zipWithIndex.map {
+      case (block, i) =>
+        resultBuffer.putInt(UnsafeUtils.INT_SIZE + i * UnsafeUtils.INT_SIZE, block.getSize.toInt)
+        resultBuffer.position(tagAndSizes + offset)
+        val localBuffer = resultBuffer.slice()
+        offset += block.getSize.toInt
+        localBuffer.limit(block.getSize.toInt)
+        localBuffer
     }
+    // Do parallel read of blocks
+    val blocksCollection = blocks.indices.par
+    blocksCollection.tasksupport = taskSupport
+    for (i <- blocksCollection) {
+      blocks(i).getBlock(localBuffers(i))
+    }
+
+    val startTime = System.nanoTime()
+    replyEp.sendAmNonBlocking(1, resultMemory.address, tagAndSizes,
+      resultMemory.address + tagAndSizes, resultMemory.size - tagAndSizes, 0, new UcxCallback {
+        override def onSuccess(request: UcpRequest): Unit = {
+          logTrace(s"Sent ${blockIds.length} blocks of size: ${resultMemory.size} " +
+            s"to tag $replyTag in ${System.nanoTime() - startTime} ns.")
+          hostBounceBufferMemoryPool.put(resultMemory)
+        }
+      }, MEMORY_TYPE.UCS_MEMORY_TYPE_HOST)
+
   } catch {
-    case ex: Exception => logError(ex.getLocalizedMessage)
+    case ex: Throwable => logError(s"Failed to read and send data: $ex")
   }
 
   /**

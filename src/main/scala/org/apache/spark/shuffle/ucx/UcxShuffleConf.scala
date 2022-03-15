@@ -80,12 +80,12 @@ class UcxShuffleConf(sparkConf: SparkConf) extends SparkConf {
 
   lazy val useWakeup: Boolean = sparkConf.getBoolean(WAKEUP_FEATURE.key, WAKEUP_FEATURE.defaultValue.get)
 
-  private lazy val NUM_PROGRESS_THREADS= ConfigBuilder(getUcxConf("numProgressThreads"))
-    .doc("Number of threads in progress thread pool")
+  private lazy val NUM_IO_THREADS= ConfigBuilder(getUcxConf("numIoThreads"))
+    .doc("Number of threads in io thread pool")
     .intConf
     .createWithDefault(3)
 
-  lazy val numProgressThreads: Int = sparkConf.getInt(NUM_PROGRESS_THREADS.key, NUM_PROGRESS_THREADS.defaultValue.get)
+  lazy val numIoThreads: Int = sparkConf.getInt(NUM_IO_THREADS.key, NUM_IO_THREADS.defaultValue.get)
 
   private lazy val NUM_WORKERS = ConfigBuilder(getUcxConf("numWorkers"))
     .doc("Number of client workers")
@@ -94,4 +94,11 @@ class UcxShuffleConf(sparkConf: SparkConf) extends SparkConf {
 
   lazy val numWorkers: Int = sparkConf.getInt(NUM_WORKERS.key, sparkConf.getInt("spark.executor.cores",
     NUM_WORKERS.defaultValue.get))
+
+  private lazy val MAX_BLOCKS_IN_FLIGHT = ConfigBuilder(getUcxConf("maxBlocksPerRequest"))
+    .doc("Maximum number blocks per request")
+    .intConf
+    .createWithDefault(50)
+
+  lazy val maxBlocksPerRequest = sparkConf.getInt(MAX_BLOCKS_IN_FLIGHT.key, MAX_BLOCKS_IN_FLIGHT.defaultValue.get)
 }

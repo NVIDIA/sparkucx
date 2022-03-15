@@ -16,23 +16,14 @@ class GlobalWorkerRpcThread(globalWorker: UcpWorker, transport: UcxShuffleTransp
   setDaemon(true)
   setName("Global worker progress thread")
 
-  private val threadPool = ThreadUtils.newDaemonFixedThreadPool(transport.ucxShuffleConf.numProgressThreads,
-    "Progress threads")
-
   globalWorker.setAmRecvHandler(0, (headerAddress: Long, headerSize: Long, amData: UcpAmData,
                                      replyEp: UcpEndpoint) => {
-    threadPool.submit(new Runnable() {
-      private val startTag = UnsafeUtils.getByteBufferView(headerAddress, headerSize.toInt).getInt
-      private val data = UnsafeUtils.getByteBufferView(amData.getDataAddress, amData.getLength.toInt)
-      private val ep = replyEp
 
-      override def run(): Unit = {
-       transport.handleFetchBlockRequest(startTag, data, ep)
-       amData.close()
-      }
-    })
-    UcsConstants.STATUS.UCS_INPROGRESS
-  }, UcpConstants.UCP_AM_FLAG_PERSISTENT_DATA | UcpConstants.UCP_AM_FLAG_WHOLE_MSG)
+    val replyTag = UnsafeUtils.getByteBufferView(headerAddress, headerSize.toInt).getInt
+    val data = UnsafeUtils.getByteBufferView(amData.getDataAddress, amData.getLength.toInt)
+    transport.handleFetchBlockRequest(replyTag, data, replyEp)
+    UcsConstants.STATUS.UCS_OK
+  })
 
   override def run(): Unit = {
     if (transport.ucxShuffleConf.useWakeup) {
