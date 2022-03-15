@@ -4,7 +4,7 @@
 */
 package org.apache.spark.shuffle.ucx.rpc
 
-import org.openucx.jucx.ucp.{UcpAmData, UcpEndpoint, UcpWorker}
+import org.openucx.jucx.ucp.{UcpAmData, UcpConstants, UcpEndpoint, UcpWorker}
 import org.openucx.jucx.ucs.UcsConstants
 import org.apache.spark.internal.Logging
 import org.apache.spark.shuffle.ucx.UcxShuffleTransport
@@ -28,10 +28,11 @@ class GlobalWorkerRpcThread(globalWorker: UcpWorker, transport: UcxShuffleTransp
 
       override def run(): Unit = {
        transport.handleFetchBlockRequest(startTag, data, ep)
+       amData.close()
       }
     })
-    UcsConstants.STATUS.UCS_OK
-  })
+    UcsConstants.STATUS.UCS_INPROGRESS
+  }, UcpConstants.UCP_AM_FLAG_PERSISTENT_DATA | UcpConstants.UCP_AM_FLAG_WHOLE_MSG)
 
   override def run(): Unit = {
     if (transport.ucxShuffleConf.useWakeup) {
