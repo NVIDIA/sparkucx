@@ -5,6 +5,7 @@
 package org.apache.spark.shuffle.ucx
 
 import java.io.Closeable
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 
 import scala.collection.concurrent.TrieMap
@@ -61,6 +62,7 @@ class UcxWorkerWrapper(val worker: UcpWorker, val transport: UcxShuffleTransport
   private final val connections =  new TrieMap[transport.ExecutorId, UcpEndpoint]
   private val requestData = new TrieMap[Int, (Seq[OperationCallback], UcxRequest, transport.BufferAllocator)]
   private val tag = new AtomicInteger(Random.nextInt())
+  private val flushRequests = new ConcurrentLinkedQueue[UcpRequest]()
 
   // Receive block data handler
   worker.setAmRecvHandler(1,
@@ -155,11 +157,21 @@ class UcxWorkerWrapper(val worker: UcpWorker, val transport: UcxShuffleTransport
     }
   }
 
+  /**
+   * Blocking progress until there's outstanding flush requests.
+   */
+  def progressConnect(): Unit = {
+    while (!flushRequests.isEmpty) {
+      progress()
+      flushRequests.removeIf(_.isCompleted)
+    }
+    logTrace(s"Flush completed. Number of connections: ${connections.keys.size}")
+  }
 
   /**
    * The only place for worker progress
    */
-  def progress(): Int = {
+  def progress(): Int = worker.synchronized {
     worker.progress()
   }
 
@@ -168,6 +180,7 @@ class UcxWorkerWrapper(val worker: UcpWorker, val transport: UcxShuffleTransport
    */
   def preconnect(): Unit = {
     transport.executorAddresses.keys.foreach(getConnection)
+    progressConnect()
   }
 
   def getConnection(executorId: transport.ExecutorId): UcpEndpoint = {
@@ -196,7 +209,9 @@ class UcxWorkerWrapper(val worker: UcpWorker, val transport: UcxShuffleTransport
       } else {
         endpointParams.setUcpAddress(address)
       }
-      worker.newEndpoint(endpointParams)
+      val ep = worker.newEndpoint(endpointParams)
+      flushRequests.add(ep.flushNonBlocking(null))
+      ep
     })
   }
 
@@ -232,7 +247,7 @@ class UcxWorkerWrapper(val worker: UcpWorker, val transport: UcxShuffleTransport
       UcpConstants.UCP_AM_SEND_FLAG_REPLY | UcpConstants.UCP_AM_SEND_FLAG_EAGER, new UcxCallback() {
        override def onSuccess(request: UcpRequest): Unit = {
          buffer.clear()
-         logInfo(s"Sent message to $executorId to fetch ${blockIds.length} blocks on tag $t " +
+         logDebug(s"Sent message to $executorId to fetch ${blockIds.length} blocks on tag $t " +
            s"in ${System.nanoTime() - startTime} ns")
        }
      }, MEMORY_TYPE.UCS_MEMORY_TYPE_HOST)
