@@ -261,9 +261,11 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
   }
 
   def unregisterShuffle(shuffleId: Int): Unit = {
-    registeredBlocks.keysIterator.foreach {
-      case bid@UcxShuffleBockId(sid, _, _) if sid == shuffleId => registeredBlocks.remove(bid)
-    }
+    registeredBlocks.keysIterator.foreach(bid =>
+      if (bid.asInstanceOf[UcxShuffleBockId].shuffleId == shuffleId) {
+        registeredBlocks.remove(bid)
+      }
+    )
   }
 
   def unregisterAllBlocks(): Unit = {
