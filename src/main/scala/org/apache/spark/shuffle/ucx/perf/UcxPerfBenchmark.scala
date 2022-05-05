@@ -69,7 +69,12 @@ object UcxPerfBenchmark extends App with Logging {
     }
 
     val file = if (cmd.hasOption(FILE_OPTION)) {
-      new File(cmd.getOptionValue(FILE_OPTION))
+      val f = new File(cmd.getOptionValue(FILE_OPTION))
+      if (!f.exists()) {
+        System.err.println(s"File ${cmd.getOptionValue(FILE_OPTION)} does not exists.")
+        System.exit(-1)
+      }
+      f
     } else {
       null
     }
@@ -126,7 +131,7 @@ object UcxPerfBenchmark extends App with Logging {
     ucxTransport.init()
     val currentThread = Thread.currentThread()
 
-    val channel = new RandomAccessFile(options.file, "rw").getChannel
+    val channel = new RandomAccessFile(options.file, "r").getChannel
 
     ShutdownHookManager.addShutdownHook(()=>{
       currentThread.interrupt()
