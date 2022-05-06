@@ -8,6 +8,7 @@ import java.io.{File, RandomAccessFile}
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
+import java.nio.channels.FileChannel
 import java.util.concurrent.atomic.AtomicInteger
 
 import org.apache.commons.cli.{GnuParser, HelpFormatter, Options}
@@ -21,7 +22,7 @@ import org.apache.spark.util.ShutdownHookManager
 object UcxPerfBenchmark extends App with Logging {
 
   case class PerfOptions(remoteAddress: InetSocketAddress, numBlocks: Int, blockSize: Long,
-                         numIterations: Int, file: File, numOutstanding: Int)
+                         numIterations: Int, files: Array[File], numOutstanding: Int)
 
   private val HELP_OPTION = "h"
   private val ADDRESS_OPTION = "a"
@@ -47,7 +48,7 @@ object UcxPerfBenchmark extends App with Logging {
       "number of iterations. Default: 1")
     options.addOption(OUTSTANDING_OPTION, "num-outstanding", true,
       "number of outstanding requests. Default: 1")
-    options.addOption(FILE_OPTION, "file", true, "File to transfer")
+    options.addOption(FILE_OPTION, "files", true, "Files to transfer")
     options
   }
 
@@ -68,17 +69,27 @@ object UcxPerfBenchmark extends App with Logging {
       null
     }
 
-    val file = if (cmd.hasOption(FILE_OPTION)) {
-      new File(cmd.getOptionValue(FILE_OPTION))
-    } else {
-      null
+    var files = Array[File]()
+    if (cmd.hasOption(FILE_OPTION)) {
+      for (name <- cmd.getOptionValue(FILE_OPTION).split(",")) {
+        val f = new File(name)
+        if (!f.exists()) {
+          System.err.println(s"File $name does not exist.")
+          System.exit(-1)
+        }
+        files +:= f
+      }
+    }
+    if (files.size == 0) {
+      System.err.println(s"No file.")
+      System.exit(-1)
     }
 
     PerfOptions(inetAddress,
       Integer.parseInt(cmd.getOptionValue(NUM_BLOCKS_OPTION, "1")),
       JavaUtils.byteStringAsBytes(cmd.getOptionValue(SIZE_OPTION, "1m")),
       Integer.parseInt(cmd.getOptionValue(ITER_OPTION, "1")),
-      file,
+      files,
       Integer.parseInt(cmd.getOptionValue(OUTSTANDING_OPTION, "1")))
   }
 
@@ -101,7 +112,9 @@ object UcxPerfBenchmark extends App with Logging {
       for (b <- 0 until options.numBlocks by options.numOutstanding) {
         requestInFlight.set(options.numOutstanding)
         for (o <- 0 until options.numOutstanding) {
-          blocks(o) = UcxShuffleBockId(0, 0, (b+o) % options.numBlocks)
+          val fileIdx = (b+o) % options.files.size
+          val blockIdx = (b+o) / options.files.size
+          blocks(o) = UcxShuffleBockId(0, fileIdx, blockIdx)
           callbacks(o) = (result: OperationResult) => {
             result.getData.close()
             val stats = result.getStats.get
@@ -126,7 +139,8 @@ object UcxPerfBenchmark extends App with Logging {
     ucxTransport.init()
     val currentThread = Thread.currentThread()
 
-    val channel = new RandomAccessFile(options.file, "rw").getChannel
+    var channels = Array[FileChannel]()
+    options.files.foreach(channels +:= new RandomAccessFile(_, "r").getChannel)
 
     ShutdownHookManager.addShutdownHook(()=>{
       currentThread.interrupt()
@@ -134,9 +148,12 @@ object UcxPerfBenchmark extends App with Logging {
     })
 
     for (b <- 0 until options.numBlocks) {
-      val blockId = UcxShuffleBockId(0, 0, b)
+      val fileIdx = b % options.files.size
+      val blockIdx = b / options.files.size
+      val blockId = UcxShuffleBockId(0, fileIdx, blockIdx)
       val block = new Block {
-        private val fileOffset = b * options.blockSize
+        private val channel = channels(fileIdx)
+        private val fileOffset = blockIdx * options.blockSize
 
         override def getMemoryBlock: MemoryBlock = {
           val startTime = System.nanoTime()
