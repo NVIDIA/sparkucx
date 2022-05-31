@@ -22,7 +22,7 @@ import org.apache.spark.util.ShutdownHookManager
 object UcxPerfBenchmark extends App with Logging {
 
   case class PerfOptions(remoteAddress: InetSocketAddress, numBlocks: Int, blockSize: Long,
-                         numIterations: Int, files: Array[File], numOutstanding: Int)
+                         numIterations: Int, files: Array[File], numOutstanding: Int, randOrder: Boolean)
 
   private val HELP_OPTION = "h"
   private val ADDRESS_OPTION = "a"
@@ -31,6 +31,7 @@ object UcxPerfBenchmark extends App with Logging {
   private val SIZE_OPTION = "s"
   private val ITER_OPTION = "i"
   private val OUTSTANDING_OPTION = "o"
+  private val RANDREAD_OPTION = "r"
 
   private val sparkConf = new SparkConf()
 
@@ -49,6 +50,7 @@ object UcxPerfBenchmark extends App with Logging {
     options.addOption(OUTSTANDING_OPTION, "num-outstanding", true,
       "number of outstanding requests. Default: 1")
     options.addOption(FILE_OPTION, "files", true, "Files to transfer")
+    options.addOption(RANDREAD_OPTION, "random", false, "Read blocks in random order")
     options
   }
 
@@ -69,28 +71,26 @@ object UcxPerfBenchmark extends App with Logging {
       null
     }
 
-    var files = Array[File]()
-    if (cmd.hasOption(FILE_OPTION)) {
-      for (name <- cmd.getOptionValue(FILE_OPTION).split(",")) {
-        val f = new File(name)
-        if (!f.exists()) {
-          System.err.println(s"File $name does not exist.")
-          System.exit(-1)
-        }
-        files +:= f
-      }
+    val files = if (cmd.hasOption(FILE_OPTION)) {
+      cmd.getOptionValue(FILE_OPTION).split(",").map(f => new File(f))
+    } else {
+      Array.empty[File]
     }
-    if (files.size == 0) {
-      System.err.println(s"No file.")
-      System.exit(-1)
+
+    val randOrder = if (cmd.hasOption(RANDREAD_OPTION)) {
+      true
+    } else {
+      false
     }
+
 
     PerfOptions(inetAddress,
       Integer.parseInt(cmd.getOptionValue(NUM_BLOCKS_OPTION, "1")),
       JavaUtils.byteStringAsBytes(cmd.getOptionValue(SIZE_OPTION, "1m")),
       Integer.parseInt(cmd.getOptionValue(ITER_OPTION, "1")),
       files,
-      Integer.parseInt(cmd.getOptionValue(OUTSTANDING_OPTION, "1")))
+      Integer.parseInt(cmd.getOptionValue(OUTSTANDING_OPTION, "1")),
+      randOrder)
   }
 
   def startClient(options: PerfOptions): Unit = {
@@ -107,13 +107,15 @@ object UcxPerfBenchmark extends App with Logging {
     val blocks = Array.ofDim[BlockId](options.numOutstanding)
     val callbacks = Array.ofDim[OperationCallback](options.numOutstanding)
     val requestInFlight = new AtomicInteger(0)
+    val rnd = new scala.util.Random
+    val blocksPerFile = options.numBlocks / options.files.length
 
     for (_ <- 0 until options.numIterations) {
       for (b <- 0 until options.numBlocks by options.numOutstanding) {
         requestInFlight.set(options.numOutstanding)
         for (o <- 0 until options.numOutstanding) {
-          val fileIdx = (b+o) % options.files.size
-          val blockIdx = (b+o) / options.files.size
+          val fileIdx = if (options.randOrder) rnd.nextInt(options.files.length) else (b+o) % options.files.length
+          val blockIdx = if (options.randOrder) rnd.nextInt(blocksPerFile) else (b+o) % blocksPerFile
           blocks(o) = UcxShuffleBockId(0, fileIdx, blockIdx)
           callbacks(o) = (result: OperationResult) => {
             result.getData.close()
@@ -135,6 +137,16 @@ object UcxPerfBenchmark extends App with Logging {
   }
 
   def startServer(options: PerfOptions): Unit = {
+
+    if (options.files.isEmpty) {
+      System.err.println(s"No file.")
+      System.exit(-1)
+    }
+    options.files.foreach(f => if (!f.exists()) {
+      System.err.println(s"File ${f.getPath} does not exist.")
+      System.exit(-1)
+    })
+
     val ucxTransport = new UcxShuffleTransport(new UcxShuffleConf(sparkConf), 0)
     ucxTransport.init()
     val currentThread = Thread.currentThread()
@@ -147,30 +159,31 @@ object UcxPerfBenchmark extends App with Logging {
       ucxTransport.close()
     })
 
-    for (b <- 0 until options.numBlocks) {
-      val fileIdx = b % options.files.size
-      val blockIdx = b / options.files.size
-      val blockId = UcxShuffleBockId(0, fileIdx, blockIdx)
-      val block = new Block {
-        private val channel = channels(fileIdx)
-        private val fileOffset = blockIdx * options.blockSize
+    for (fileIdx <- options.files.indices) {
+      for (blockIdx <- 0 until (options.numBlocks /  options.files.length)) {
 
-        override def getMemoryBlock: MemoryBlock = {
-          val startTime = System.nanoTime()
-          val memBlock = ucxTransport.hostBounceBufferMemoryPool.get(options.blockSize)
-          val dstBuffer = UnsafeUtils.getByteBufferView(memBlock.address, options.blockSize.toInt)
-          channel.read(dstBuffer, fileOffset)
-          logTrace(s"Read $blockId block of size: ${options.blockSize} in ${System.nanoTime() - startTime} ns")
-          memBlock
+        val blockId = UcxShuffleBockId(0, fileIdx, blockIdx)
+        val block = new Block {
+          private val channel = channels(fileIdx)
+          private val fileOffset = blockIdx * options.blockSize
+
+          override def getMemoryBlock: MemoryBlock = {
+            val startTime = System.nanoTime()
+            val memBlock = ucxTransport.hostBounceBufferMemoryPool.get(options.blockSize)
+            val dstBuffer = UnsafeUtils.getByteBufferView(memBlock.address, options.blockSize.toInt)
+            channel.read(dstBuffer, fileOffset)
+            logTrace(s"Read $blockId block of size: ${options.blockSize} in ${System.nanoTime() - startTime} ns")
+            memBlock
+          }
+
+          override def getSize: Long = options.blockSize
+
+          override def getBlock(byteBuffer: ByteBuffer): Unit = {
+            channel.read(byteBuffer, fileOffset)
+          }
         }
-
-        override def getSize: Long = options.blockSize
-
-        override def getBlock(byteBuffer: ByteBuffer): Unit = {
-          channel.read(byteBuffer, fileOffset)
-        }
+        ucxTransport.register(blockId, block)
       }
-      ucxTransport.register(blockId, block)
     }
     while (!Thread.currentThread().isInterrupted) {
       Thread.sleep(10000)
