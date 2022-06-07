@@ -173,6 +173,8 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
       endpoints.foreach(_.closeNonBlockingForce())
       endpoints.clear()
 
+      hostBounceBufferMemoryPool.close()
+
       allocatedWorkers.foreach(_.close())
 
       if (listener != null) {
@@ -189,8 +191,6 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
         globalWorker.close()
         globalWorker = null
       }
-
-      hostBounceBufferMemoryPool.close()
 
       if (ucxContext != null) {
         ucxContext.close()
@@ -312,8 +312,14 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
         localBuffer
     }
     // Do parallel read of blocks
-    val blocksCollection = blocks.indices.par
-    blocksCollection.tasksupport = taskSupport
+    val blocksCollection = if (ucxShuffleConf.numIoThreads > 1) {
+      val parCollection = blocks.indices.par
+      parCollection.tasksupport = taskSupport
+      parCollection
+    } else {
+      blocks.indices
+    }
+
     for (i <- blocksCollection) {
       blocks(i).getBlock(localBuffers(i))
     }

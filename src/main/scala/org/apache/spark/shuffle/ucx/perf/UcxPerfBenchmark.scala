@@ -10,19 +10,21 @@ import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.nio.channels.FileChannel
 import java.util.concurrent.atomic.AtomicInteger
-
 import org.apache.commons.cli.{GnuParser, HelpFormatter, Options}
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.shuffle.ucx._
 import org.apache.spark.shuffle.utils.UnsafeUtils
-import org.apache.spark.util.ShutdownHookManager
+import org.apache.spark.util.{ShutdownHookManager, ThreadUtils}
+
+import scala.collection.parallel.ForkJoinTaskSupport
 
 object UcxPerfBenchmark extends App with Logging {
 
   case class PerfOptions(remoteAddress: InetSocketAddress, numBlocks: Int, blockSize: Long,
-                         numIterations: Int, files: Array[File], numOutstanding: Int, randOrder: Boolean)
+                         numIterations: Int, files: Array[File], numOutstanding: Int, randOrder: Boolean,
+                         numThreads: Int)
 
   private val HELP_OPTION = "h"
   private val ADDRESS_OPTION = "a"
@@ -32,6 +34,7 @@ object UcxPerfBenchmark extends App with Logging {
   private val ITER_OPTION = "i"
   private val OUTSTANDING_OPTION = "o"
   private val RANDREAD_OPTION = "r"
+  private val THREAD_OPTION = "t"
 
   private val sparkConf = new SparkConf()
 
@@ -50,6 +53,7 @@ object UcxPerfBenchmark extends App with Logging {
     options.addOption(OUTSTANDING_OPTION, "num-outstanding", true,
       "number of outstanding requests. Default: 1")
     options.addOption(FILE_OPTION, "files", true, "Files to transfer")
+    options.addOption(THREAD_OPTION, "thread", true, "Number of threads. Default: 1")
     options.addOption(RANDREAD_OPTION, "random", false, "Read blocks in random order")
     options
   }
@@ -83,17 +87,20 @@ object UcxPerfBenchmark extends App with Logging {
       false
     }
 
-
     PerfOptions(inetAddress,
       Integer.parseInt(cmd.getOptionValue(NUM_BLOCKS_OPTION, "1")),
       JavaUtils.byteStringAsBytes(cmd.getOptionValue(SIZE_OPTION, "1m")),
       Integer.parseInt(cmd.getOptionValue(ITER_OPTION, "1")),
       files,
       Integer.parseInt(cmd.getOptionValue(OUTSTANDING_OPTION, "1")),
-      randOrder)
+      randOrder,
+      Integer.parseInt(cmd.getOptionValue(THREAD_OPTION, "1")))
   }
 
   def startClient(options: PerfOptions): Unit = {
+    if (options.numThreads > 1) {
+      sparkConf.set("spark.executor.cores", options.numThreads.toString)
+    }
     val ucxTransport = new UcxShuffleTransport(new UcxShuffleConf(sparkConf), 0)
     ucxTransport.init()
 
@@ -110,8 +117,17 @@ object UcxPerfBenchmark extends App with Logging {
     val rnd = new scala.util.Random
     val blocksPerFile = options.numBlocks / options.files.length
 
+    val blockCollection =  if (options.numThreads > 1) {
+      val parallelCollection = (0 until options.numBlocks by options.numOutstanding).par
+      val threadPool = ThreadUtils.newForkJoinPool("Benchmark threads", options.numThreads)
+      parallelCollection.tasksupport = new ForkJoinTaskSupport(threadPool)
+      parallelCollection
+    } else {
+      0 until options.numBlocks by options.numOutstanding
+    }
+
     for (_ <- 0 until options.numIterations) {
-      for (b <- 0 until options.numBlocks by options.numOutstanding) {
+      for  (b <- blockCollection) {
         requestInFlight.set(options.numOutstanding)
         for (o <- 0 until options.numOutstanding) {
           val fileIdx = if (options.randOrder) rnd.nextInt(options.files.length) else (b+o) % options.files.length
@@ -123,7 +139,8 @@ object UcxPerfBenchmark extends App with Logging {
             if (requestInFlight.decrementAndGet() == 0) {
               printf(s"Received ${options.numOutstanding} block of size: ${stats.recvSize}  " +
                 s"in ${stats.getElapsedTimeNs / 1000} usec. Bandwidth: %.2f Mb/s \n",
-                (options.blockSize * options.numOutstanding) / (1024.0 * 1024.0 * (stats.getElapsedTimeNs / 1e9)))
+                (options.blockSize * options.numOutstanding * options.numThreads) /
+                  (1024.0 * 1024.0 * (stats.getElapsedTimeNs / 1e9)))
             }
           }
         }
