@@ -50,25 +50,11 @@ class UcxShuffleConf(sparkConf: SparkConf) extends SparkConf {
   lazy val minRegistrationSize: Int = sparkConf.getSizeAsBytes(MIN_REGISTRATION_SIZE.key,
     MIN_REGISTRATION_SIZE.defaultValueString).toInt
 
-  private lazy val PREREGISTER_MEMORY = ConfigBuilder(getUcxConf("memory.preregister"))
-    .doc("Whether to do ucp mem map for allocated memory in memory pool")
-    .booleanConf.createWithDefault(true)
-
-  lazy val preregisterMemory: Boolean = sparkConf.getBoolean(PREREGISTER_MEMORY.key, PREREGISTER_MEMORY.defaultValue.get)
-
-  private lazy val USE_SOCKADDR =
-    ConfigBuilder(getUcxConf("useSockAddr"))
-      .doc("Whether to use socket address to connect executors.")
-      .booleanConf
-      .createWithDefault(true)
-
   private lazy val SOCKADDR =
     ConfigBuilder(getUcxConf("listener.sockaddr"))
       .doc("Whether to use socket address to connect executors.")
       .stringConf
       .createWithDefault("0.0.0.0:0")
-
-  lazy val useSockAddr: Boolean = sparkConf.getBoolean(USE_SOCKADDR.key, USE_SOCKADDR.defaultValue.get)
 
   lazy val listenerAddress: String = sparkConf.get(SOCKADDR.key, SOCKADDR.defaultValueString)
 
@@ -83,11 +69,18 @@ class UcxShuffleConf(sparkConf: SparkConf) extends SparkConf {
   private lazy val NUM_IO_THREADS= ConfigBuilder(getUcxConf("numIoThreads"))
     .doc("Number of threads in io thread pool")
     .intConf
-    .createWithDefault(3)
+    .createWithDefault(1)
 
   lazy val numIoThreads: Int = sparkConf.getInt(NUM_IO_THREADS.key, NUM_IO_THREADS.defaultValue.get)
 
-  private lazy val NUM_WORKERS = ConfigBuilder(getUcxConf("numWorkers"))
+  private lazy val NUM_LISTNER_THREADS= ConfigBuilder(getUcxConf("numListenerThreads"))
+    .doc("Number of threads in listener thread pool")
+    .intConf
+    .createWithDefault(3)
+
+  lazy val numListenerThreads: Int = sparkConf.getInt(NUM_LISTNER_THREADS.key, NUM_LISTNER_THREADS.defaultValue.get)
+
+  private lazy val NUM_WORKERS = ConfigBuilder(getUcxConf("numClientWorkers"))
     .doc("Number of client workers")
     .intConf
     .createWithDefault(1)

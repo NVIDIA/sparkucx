@@ -16,14 +16,32 @@ class GlobalWorkerRpcThread(globalWorker: UcpWorker, transport: UcxShuffleTransp
   setDaemon(true)
   setName("Global worker progress thread")
 
-  globalWorker.setAmRecvHandler(0, (headerAddress: Long, headerSize: Long, amData: UcpAmData,
-                                     replyEp: UcpEndpoint) => {
+  private val replyWorkersThreadPool = ThreadUtils.newDaemonFixedThreadPool(transport.ucxShuffleConf.numListenerThreads,
+    "UcxListenerThread")
 
-    val replyTag = UnsafeUtils.getByteBufferView(headerAddress, headerSize.toInt).getInt
-    val data = UnsafeUtils.getByteBufferView(amData.getDataAddress, amData.getLength.toInt)
-    transport.handleFetchBlockRequest(replyTag, data, replyEp)
+  // Main RPC thread. Submit each RPC request to separate thread and send reply back from separate worker.
+  globalWorker.setAmRecvHandler(0, (headerAddress: Long, headerSize: Long, amData: UcpAmData, _: UcpEndpoint) => {
+    val header = UnsafeUtils.getByteBufferView(headerAddress, headerSize.toInt)
+    val replyTag = header.getInt
+    val replyExecutor = header.getLong
+    replyWorkersThreadPool.submit(new Runnable {
+      override def run(): Unit = {
+        transport.handleFetchBlockRequest(replyTag, amData, replyExecutor)
+      }
+    })
+    UcsConstants.STATUS.UCS_INPROGRESS
+  }, UcpConstants.UCP_AM_FLAG_PERSISTENT_DATA | UcpConstants.UCP_AM_FLAG_WHOLE_MSG )
+
+
+  // AM to get worker address for client worker and connect server workers to it
+  globalWorker.setAmRecvHandler(1, (headerAddress: Long, headerSize: Long, amData: UcpAmData,
+                                    _: UcpEndpoint) => {
+    val header = UnsafeUtils.getByteBufferView(headerAddress, headerSize.toInt)
+    val executorId = header.getLong
+    val workerAddress = UnsafeUtils.getByteBufferView(amData.getDataAddress, amData.getLength.toInt)
+    transport.connectServerWorkers(executorId, workerAddress)
     UcsConstants.STATUS.UCS_OK
-  })
+  }, UcpConstants.UCP_AM_FLAG_WHOLE_MSG)
 
   override def run(): Unit = {
     if (transport.ucxShuffleConf.useWakeup) {

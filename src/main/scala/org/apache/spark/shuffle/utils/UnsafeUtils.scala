@@ -4,7 +4,7 @@
  */
 package org.apache.spark.shuffle.utils
 
-import java.lang.reflect.{Constructor, InvocationTargetException, Method}
+import java.lang.reflect.InvocationTargetException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 
@@ -14,13 +14,15 @@ import org.apache.spark.internal.Logging
 
 object UnsafeUtils extends Logging {
   val INT_SIZE: Int = 4
+  val LONG_SIZE: Int = 8
+
   private val mmap = classOf[FileChannelImpl].getDeclaredMethod("map0", classOf[Int], classOf[Long], classOf[Long])
   mmap.setAccessible(true)
 
   private val unmmap = classOf[FileChannelImpl].getDeclaredMethod("unmap0", classOf[Long], classOf[Long])
   unmmap.setAccessible(true)
 
-  private val classDirectByteBuffer = Class.forName("java.nio.DirectByteBuffer");
+  private val classDirectByteBuffer = Class.forName("java.nio.DirectByteBuffer")
   private val directBufferConstructor = classDirectByteBuffer.getDeclaredConstructor(classOf[Long], classOf[Int])
   directBufferConstructor.setAccessible(true)
 
@@ -39,7 +41,7 @@ object UnsafeUtils extends Logging {
         .asInstanceOf[Long]
     } catch {
       case e: Exception =>
-        logError(s"Failed to mmap (${fileChannel.size()} $offset $length): ${e}")
+        logError(s"Failed to mmap (${fileChannel.size()} $offset $length): $e")
         throw new UcxException(e.getMessage)
     }
   }

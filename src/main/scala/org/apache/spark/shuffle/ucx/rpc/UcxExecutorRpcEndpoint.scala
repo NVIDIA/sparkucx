@@ -4,13 +4,13 @@
 */
 package org.apache.spark.shuffle.ucx.rpc
 
-import java.util.concurrent.ExecutorService
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcEndpoint, RpcEndpointRef, RpcEnv}
 import org.apache.spark.shuffle.ucx.UcxShuffleTransport
 import org.apache.spark.shuffle.ucx.rpc.UcxRpcMessages.{ExecutorAdded, IntroduceAllExecutors}
 import org.apache.spark.shuffle.ucx.utils.SerializableDirectBuffer
+
+import java.util.concurrent.ExecutorService
 
 class UcxExecutorRpcEndpoint(override val rpcEnv: RpcEnv, transport: UcxShuffleTransport,
                              executorService: ExecutorService)
