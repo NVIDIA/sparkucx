@@ -14,6 +14,7 @@ import org.openucx.jucx.ucs.UcsConstants
 import org.openucx.jucx.ucs.UcsConstants.MEMORY_TYPE
 import org.openucx.jucx.{UcxCallback, UcxException, UcxUtils}
 import org.apache.spark.internal.Logging
+import org.apache.spark.shuffle.ucx.memory.UcxBounceBufferMemoryBlock
 import org.apache.spark.shuffle.ucx.utils.SerializationUtils
 import org.apache.spark.shuffle.utils.UnsafeUtils
 import org.apache.spark.unsafe.Platform
@@ -159,15 +160,6 @@ case class UcxWorkerWrapper(worker: UcpWorker, transport: UcxShuffleTransport, i
   }
 
   /**
-   * Blocking progress single request until it's not completed.
-   */
-  def waitRequest(request: UcpRequest): Unit = {
-    while (!request.isCompleted) {
-      progress()
-    }
-  }
-
-  /**
    * Blocking progress until there's outstanding flush requests.
    */
   def progressConnect(): Unit = {
@@ -289,6 +281,7 @@ case class UcxWorkerWrapper(worker: UcpWorker, transport: UcxShuffleTransport, i
   def handleFetchBlockRequest(blocks: Seq[Block], replyTag: Int, replyExecutor: Long): Unit = try {
     val tagAndSizes = UnsafeUtils.INT_SIZE + UnsafeUtils.INT_SIZE * blocks.length
     val resultMemory = transport.hostBounceBufferMemoryPool.get(tagAndSizes + blocks.map(_.getSize).sum)
+      .asInstanceOf[UcxBounceBufferMemoryBlock]
     val resultBuffer = UcxUtils.getByteBufferView(resultMemory.address,
       resultMemory.size)
     resultBuffer.putInt(replyTag)
@@ -328,7 +321,8 @@ case class UcxWorkerWrapper(worker: UcpWorker, transport: UcxShuffleTransport, i
         override def onError(ucsStatus: Int, errorMsg: String): Unit = {
           logError(s"Failed to send $errorMsg")
         }
-      }, MEMORY_TYPE.UCS_MEMORY_TYPE_HOST)
+      }, new UcpRequestParams().setMemoryType(UcsConstants.MEMORY_TYPE.UCS_MEMORY_TYPE_HOST)
+        .setMemoryHandle(resultMemory.memory))
 
     while (!req.isCompleted) {
       progress()

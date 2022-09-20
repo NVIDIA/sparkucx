@@ -5,7 +5,7 @@ that are supported by [UCX](https://github.com/openucx/ucx#supported-transports)
 ## Runtime requirements
 * Apache Spark 2.4/3.0
 * Java 8+
-* Installed UCX of version 1.12+, and [UCX supported transport hardware](https://github.com/openucx/ucx#supported-transports).
+* Installed UCX of version 1.13+, and [UCX supported transport hardware](https://github.com/openucx/ucx#supported-transports).
 
 ## Installation
 

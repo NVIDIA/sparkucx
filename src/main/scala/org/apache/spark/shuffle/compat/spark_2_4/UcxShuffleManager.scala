@@ -6,9 +6,7 @@ package org.apache.spark.shuffle
 
 import org.apache.spark.shuffle.compat.spark_2_4.{UcxShuffleBlockResolver, UcxShuffleReader}
 import org.apache.spark.shuffle.ucx.CommonUcxShuffleManager
-import org.apache.spark.shuffle.ucx.rpc.UcxDriverRpcEndpoint
-import org.apache.spark.util.ShutdownHookManager
-import org.apache.spark.{ShuffleDependency, SparkConf, SparkEnv, TaskContext}
+import org.apache.spark.{SparkConf, TaskContext}
 
 /**
  * Main entry point of Ucx shuffle plugin. It extends spark's default SortShufflePlugin

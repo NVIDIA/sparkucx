@@ -19,6 +19,4 @@ object UcxRpcMessages {
    * Reply from driver with all executors in the cluster with their worker addresses.
    */
   case class IntroduceAllExecutors(executorIdToAddress: Map[Long, SerializableDirectBuffer])
-
-  case class FetchBlocksByBlockIdsRequest(startTag: Int, blockIds: Seq[BlockId])
 }

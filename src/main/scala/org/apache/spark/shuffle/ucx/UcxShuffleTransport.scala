@@ -33,15 +33,6 @@ class UcxRequest(private var request: UcpRequest, stats: OperationStats)
   }
 }
 
-class UcxRegisteredMemoryBlock(private[ucx] val memory: UcpMemory)
-  extends MemoryBlock(memory.getAddress, memory.getLength,
-    memory.getMemType == UcsConstants.MEMORY_TYPE.UCS_MEMORY_TYPE_HOST) {
-
-  override def close(): Unit = {
-    memory.close()
-  }
-}
-
 class UcxStats extends OperationStats {
   private[ucx] val startTime = System.nanoTime()
   private[ucx] var amHandleTime = 0L
@@ -108,7 +99,6 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
       ucpEndpoint.close()
     }
   }
-
 
   override def init(): ByteBuffer = {
     if (ucxShuffleConf == null) {

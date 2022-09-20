@@ -12,9 +12,6 @@ import org.apache.spark.network.util.ByteUnit
  * Plugin configuration properties.
  */
 class UcxShuffleConf(sparkConf: SparkConf) extends SparkConf {
-  object PROTOCOL extends Enumeration {
-    val ONE_SIDED, AM = Value
-  }
 
   def getSparkConf: SparkConf = sparkConf
 
@@ -93,5 +90,5 @@ class UcxShuffleConf(sparkConf: SparkConf) extends SparkConf {
     .intConf
     .createWithDefault(50)
 
-  lazy val maxBlocksPerRequest = sparkConf.getInt(MAX_BLOCKS_IN_FLIGHT.key, MAX_BLOCKS_IN_FLIGHT.defaultValue.get)
+  lazy val maxBlocksPerRequest: Int = sparkConf.getInt(MAX_BLOCKS_IN_FLIGHT.key, MAX_BLOCKS_IN_FLIGHT.defaultValue.get)
 }

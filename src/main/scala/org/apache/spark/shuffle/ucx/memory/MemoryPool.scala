@@ -145,6 +145,3 @@ class UcxHostBounceBuffersPool(ucxShuffleConf: UcxShuffleConf, ucxContext: UcpCo
     case (bufferSize, count) => preAllocate(bufferSize, count)
   }
 }
-
-class UcxGpuBounceBuffersPool(ucxShuffleConf: UcxShuffleConf, ucxContext: UcpContext)
-  extends MemoryPool(ucxShuffleConf, ucxContext, UcsConstants.MEMORY_TYPE.UCS_MEMORY_TYPE_CUDA)
