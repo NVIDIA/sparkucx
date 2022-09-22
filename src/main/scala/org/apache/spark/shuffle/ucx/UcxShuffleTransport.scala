@@ -106,7 +106,8 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
     }
 
     val numEndpoints = ucxShuffleConf.numWorkers *
-      ucxShuffleConf.getSparkConf.getInt("spark.executor.instances", 1)
+      ucxShuffleConf.getSparkConf.getInt("spark.executor.instances", 1) *
+      ucxShuffleConf.numListenerThreads // Each listener thread creates backward endpoint
     logInfo(s"Creating UCX context with an estimated number of endpoints: $numEndpoints")
 
     val params = new UcpParams().requestAmFeature().setMtWorkersShared(true).setEstimatedNumEps(numEndpoints)
