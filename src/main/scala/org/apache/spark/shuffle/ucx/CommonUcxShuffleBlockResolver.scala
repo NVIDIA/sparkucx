@@ -39,7 +39,7 @@ abstract class CommonUcxShuffleBlockResolver(ucxShuffleManager: CommonUcxShuffle
     val channel = dataBackFile.getChannel
     for ((blockLength, reduceId) <- lengths.zipWithIndex) {
       if (blockLength > 0) {
-        val blockId = UcxShuffleBockId(shuffleId, mapId ,reduceId)
+        val blockId = UcxShuffleBlockId(shuffleId, mapId ,reduceId)
         val block = new Block {
           private val fileOffset = offset
 

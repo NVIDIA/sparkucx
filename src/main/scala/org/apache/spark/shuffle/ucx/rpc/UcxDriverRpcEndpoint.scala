@@ -26,7 +26,7 @@ class UcxDriverRpcEndpoint(override val rpcEnv: RpcEnv) extends ThreadSafeRpcEnd
       logDebug(s"Received $message")
       if (executorToWorkerAddress.nonEmpty) {
         val msg = IntroduceAllExecutors(executorToWorkerAddress)
-        logDebug(s"replying $msg to $executorId")
+        logDebug(s"Replying $msg to $executorId")
         context.reply(msg)
       }
       executorToWorkerAddress += executorId -> ucxWorkerAddress

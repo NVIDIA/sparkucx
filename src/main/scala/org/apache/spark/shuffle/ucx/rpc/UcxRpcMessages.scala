@@ -5,7 +5,6 @@
 package org.apache.spark.shuffle.ucx.rpc
 
 import org.apache.spark.rpc.RpcEndpointRef
-import org.apache.spark.shuffle.ucx.BlockId
 import org.apache.spark.shuffle.ucx.utils.SerializableDirectBuffer
 
 object UcxRpcMessages {

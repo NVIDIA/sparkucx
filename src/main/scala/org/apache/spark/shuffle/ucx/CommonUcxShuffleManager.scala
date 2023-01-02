@@ -30,7 +30,7 @@ abstract class CommonUcxShuffleManager(val conf: SparkConf, isDriver: Boolean) e
   private var executorEndpoint: UcxExecutorRpcEndpoint = _
   private var driverEndpoint: UcxDriverRpcEndpoint = _
 
-  protected val driverRpcName = "SparkUCX_driver"
+  private val driverRpcName = "SparkUCX_driver"
 
   private val setupThread = ThreadUtils.newDaemonSingleThreadExecutor("UcxTransportSetupThread")
 
@@ -49,6 +49,7 @@ abstract class CommonUcxShuffleManager(val conf: SparkConf, isDriver: Boolean) e
           Thread.sleep(5)
         }
         startUcxTransport()
+        logInfo(s"Setup finished")
       }
     }
   })
@@ -56,14 +57,14 @@ abstract class CommonUcxShuffleManager(val conf: SparkConf, isDriver: Boolean) e
   /**
    * Atomically starts UcxNode singleton - one for all shuffle threads.
    */
-  def startUcxTransport(): Unit = if (ucxTransport == null) {
+  private def startUcxTransport(): Unit = if (ucxTransport == null) {
     val blockManager = SparkEnv.get.blockManager.blockManagerId
     val transport = new UcxShuffleTransport(ucxShuffleConf, blockManager.executorId.toLong)
     val address = transport.init()
     ucxTransport = transport
     val rpcEnv = RpcEnv.create("ucx-rpc-env", blockManager.host, blockManager.port,
       conf, new SecurityManager(conf), clientMode = false)
-    executorEndpoint = new UcxExecutorRpcEndpoint(rpcEnv, ucxTransport, setupThread)
+    executorEndpoint = new UcxExecutorRpcEndpoint(rpcEnv, ucxTransport)
     val endpoint = rpcEnv.setupEndpoint(
       s"ucx-shuffle-executor-${blockManager.executorId}",
       executorEndpoint)
