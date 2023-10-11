@@ -4,6 +4,8 @@
 */
 package org.apache.spark.shuffle.ucx
 
+import java.util.concurrent.{CountDownLatch, TimeUnit}
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Success
 
@@ -14,7 +16,7 @@ import org.apache.spark.shuffle.ucx.rpc.UcxRpcMessages.{ExecutorAdded, Introduce
 import org.apache.spark.shuffle.ucx.utils.SerializableDirectBuffer
 import org.apache.spark.util.{RpcUtils, ThreadUtils}
 import org.apache.spark.{SecurityManager, SparkConf, SparkEnv}
-import org.openucx.jucx.NativeLibs
+import org.openucx.jucx.{NativeLibs, UcxException}
 
 /**
  * Common part for all spark versions for UcxShuffleManager logic
@@ -31,6 +33,7 @@ abstract class CommonUcxShuffleManager(val conf: SparkConf, isDriver: Boolean) e
 
   val ucxShuffleConf = new UcxShuffleConf(conf)
 
+  private[this] val latch = new CountDownLatch(1)
   @volatile var ucxTransport: UcxShuffleTransport = _
 
   private var executorEndpoint: UcxExecutorRpcEndpoint = _
@@ -59,6 +62,16 @@ abstract class CommonUcxShuffleManager(val conf: SparkConf, isDriver: Boolean) e
     }
   })
 
+  def awaitUcxTransport(): UcxShuffleTransport = {
+    if (ucxTransport == null) {
+      latch.await(10, TimeUnit.SECONDS)
+      if (ucxTransport == null) {
+        throw new UcxException("UcxShuffleTransport init timeout")
+      }
+    }
+    ucxTransport
+  }
+
   /**
    * Atomically starts UcxNode singleton - one for all shuffle threads.
    */
@@ -67,6 +80,7 @@ abstract class CommonUcxShuffleManager(val conf: SparkConf, isDriver: Boolean) e
     val transport = new UcxShuffleTransport(ucxShuffleConf, blockManager.executorId.toLong)
     val address = transport.init()
     ucxTransport = transport
+    latch.countDown()
     val rpcEnv = RpcEnv.create("ucx-rpc-env", blockManager.host, blockManager.port,
       conf, new SecurityManager(conf), clientMode = false)
     executorEndpoint = new UcxExecutorRpcEndpoint(rpcEnv, ucxTransport, setupThread)

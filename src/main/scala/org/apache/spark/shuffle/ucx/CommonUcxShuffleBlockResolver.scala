@@ -26,6 +26,7 @@ abstract class CommonUcxShuffleBlockResolver(ucxShuffleManager: CommonUcxShuffle
   extends IndexShuffleBlockResolver(ucxShuffleManager.conf) {
 
   private val openFds = new ConcurrentHashMap[ShuffleId, ConcurrentLinkedQueue[RandomAccessFile]]()
+  private[ucx] lazy val transport = ucxShuffleManager.awaitUcxTransport
 
   /**
    * Mapper commit protocol extension. Register index and data files and publish all needed
@@ -49,7 +50,7 @@ abstract class CommonUcxShuffleBlockResolver(ucxShuffleManager: CommonUcxShuffle
 
           override def getSize: Long = blockLength
         }
-        ucxShuffleManager.ucxTransport.register(blockId, block)
+        transport.register(blockId, block)
         offset += blockLength
       }
     }

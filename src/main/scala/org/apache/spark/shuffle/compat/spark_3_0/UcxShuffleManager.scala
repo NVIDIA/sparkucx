@@ -20,6 +20,7 @@ class UcxShuffleManager(override val conf: SparkConf, isDriver: Boolean)
   extends CommonUcxShuffleManager(conf, isDriver) {
 
   private lazy val shuffleExecutorComponents = loadShuffleExecutorComponents(conf)
+  private[this] lazy val transport = awaitUcxTransport
 
   override val shuffleBlockResolver = new UcxShuffleBlockResolver(this)
 
@@ -46,7 +47,7 @@ class UcxShuffleManager(override val conf: SparkConf, isDriver: Boolean)
   override def getReader[K, C](handle: ShuffleHandle, startPartition: MapId, endPartition: MapId,
                                context: TaskContext, metrics: ShuffleReadMetricsReporter): ShuffleReader[K, C] = {
     new UcxShuffleReader(handle.asInstanceOf[BaseShuffleHandle[K,_,C]], startPartition, endPartition,
-      context, ucxTransport, readMetrics = metrics, shouldBatchFetch = false)
+      context, transport, readMetrics = metrics, shouldBatchFetch = false)
   }
 
   private def loadShuffleExecutorComponents(conf: SparkConf): ShuffleExecutorComponents = {

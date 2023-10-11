@@ -14,7 +14,7 @@ import org.apache.spark.{SparkConf, TaskContext}
  */
 class UcxShuffleManager(override val conf: SparkConf, isDriver: Boolean)
   extends CommonUcxShuffleManager(conf, isDriver) {
-
+  private[this] lazy val transport = awaitUcxTransport
   /**
    * Mapper callback on executor. Just start UcxNode and use Spark mapper logic.
    */
@@ -31,7 +31,7 @@ class UcxShuffleManager(override val conf: SparkConf, isDriver: Boolean)
   override def getReader[K, C](handle: ShuffleHandle, startPartition: Int,
                                endPartition: Int, context: TaskContext): ShuffleReader[K, C] = {
     new UcxShuffleReader(handle.asInstanceOf[BaseShuffleHandle[K,_,C]], startPartition,
-      endPartition, context, ucxTransport)
+      endPartition, context, transport)
   }
 }
 
