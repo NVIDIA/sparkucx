@@ -310,7 +310,7 @@ case class UcxWorkerWrapper(worker: UcpWorker, transport: UcxShuffleTransport, i
     }
 
     val startTime = System.nanoTime()
-    val req = getConnection(replyExecutor).sendAmNonBlocking(1, resultMemory.address, tagAndSizes,
+    val req = connections(replyExecutor).sendAmNonBlocking(1, resultMemory.address, tagAndSizes,
       resultMemory.address + tagAndSizes, resultMemory.size - tagAndSizes, 0, new UcxCallback {
         override def onSuccess(request: UcpRequest): Unit = {
           logTrace(s"Sent ${blocks.length} blocks of size: ${resultMemory.size} " +

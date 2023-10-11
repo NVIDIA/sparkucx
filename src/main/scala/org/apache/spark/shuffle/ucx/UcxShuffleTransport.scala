@@ -273,7 +273,6 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
   }
 
   def connectServerWorkers(executorId: ExecutorId, workerAddress: ByteBuffer): Unit = {
-    executorAddresses.put(executorId, workerAddress)
     allocatedServerWorkers.foreach(w => w.connectByWorkerAddress(executorId, workerAddress))
   }
 
