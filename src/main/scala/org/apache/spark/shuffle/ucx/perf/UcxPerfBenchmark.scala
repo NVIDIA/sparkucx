@@ -195,8 +195,8 @@ object UcxPerfBenchmark extends App with Logging {
 
           override def getSize: Long = options.blockSize
 
-          override def getBlock(byteBuffer: ByteBuffer): Unit = {
-            channel.read(byteBuffer, fileOffset)
+          override def getBlock(byteBuffer: ByteBuffer, offset: Long): Unit = {
+            channel.read(byteBuffer, fileOffset + offset)
           }
         }
         ucxTransport.register(blockId, block)

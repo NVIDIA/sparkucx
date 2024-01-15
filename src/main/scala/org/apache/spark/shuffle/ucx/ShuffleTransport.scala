@@ -43,7 +43,7 @@ trait Block extends BlockLock {
   def getMemoryBlock: MemoryBlock = ???
 
   // Get block from a file into byte buffer backed bunce buffer
-  def getBlock(byteBuffer: ByteBuffer): Unit
+  def getBlock(byteBuffer: ByteBuffer, offset: Long): Unit
 }
 
 object OperationStatus extends Enumeration {
@@ -90,6 +90,7 @@ trait Request {
  */
 trait OperationCallback {
   def onComplete(result: OperationResult): Unit
+  def onData(buf: ByteBuffer): Unit = ???
 }
 
 /**
