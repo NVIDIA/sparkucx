@@ -12,26 +12,16 @@ import org.apache.spark.shuffle.ucx.utils.SerializableDirectBuffer
 
 import java.util.concurrent.ExecutorService
 
-class UcxExecutorRpcEndpoint(override val rpcEnv: RpcEnv, transport: UcxShuffleTransport,
-                             executorService: ExecutorService)
+class UcxExecutorRpcEndpoint(override val rpcEnv: RpcEnv, transport: UcxShuffleTransport)
   extends RpcEndpoint  with Logging {
 
   override def receive: PartialFunction[Any, Unit] = {
     case ExecutorAdded(executorId: Long, _: RpcEndpointRef,
     ucxWorkerAddress: SerializableDirectBuffer) =>
       logDebug(s"Received ExecutorAdded($executorId)")
-      executorService.submit(new Runnable() {
-        override def run(): Unit = {
-          transport.addExecutor(executorId, ucxWorkerAddress.value)
-        }
-      })
+      transport.addExecutor(executorId, ucxWorkerAddress.value)
     case IntroduceAllExecutors(executorIdToWorkerAdresses: Map[Long, SerializableDirectBuffer]) =>
       logDebug(s"Received IntroduceAllExecutors(${executorIdToWorkerAdresses.keys.mkString(",")}")
-      executorService.submit(new Runnable() {
-        override def run(): Unit = {
-          transport.addExecutors(executorIdToWorkerAdresses)
-          transport.preConnect()
-        }
-      })
+      transport.addExecutors(executorIdToWorkerAdresses)
   }
 }

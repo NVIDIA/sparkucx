@@ -76,6 +76,7 @@ case class UcxWorkerWrapper(worker: UcpWorker, transport: UcxShuffleTransport, i
     // Receive block data handler
     worker.setAmRecvHandler(1,
       (headerAddress: Long, headerSize: Long, ucpAmData: UcpAmData, _: UcpEndpoint) => {
+        logInfo(s"Received message")
         val headerBuffer = UnsafeUtils.getByteBufferView(headerAddress, headerSize.toInt)
         val i = headerBuffer.getInt
         val data = requestData.remove(i)
@@ -182,7 +183,7 @@ case class UcxWorkerWrapper(worker: UcpWorker, transport: UcxShuffleTransport, i
    */
   def preconnect(): Unit = {
     transport.executorAddresses.keys.foreach(getConnection)
-    progressConnect()
+    //progressConnect()
   }
 
   def connectByWorkerAddress(executorId: transport.ExecutorId, workerAddress: ByteBuffer): Unit = {
@@ -196,7 +197,9 @@ case class UcxWorkerWrapper(worker: UcpWorker, transport: UcxShuffleTransport, i
 
     val startTime = System.currentTimeMillis()
     while (!transport.executorAddresses.contains(executorId)) {
-      if  (System.currentTimeMillis() - startTime >
+      logWarning(s"No address for $executorId." +
+        s"Executor addresses ${transport.executorAddresses.keys.mkString(",")}")
+      if  ((System.currentTimeMillis() - startTime) >
         transport.ucxShuffleConf.getSparkConf.getTimeAsMs("spark.network.timeout", "100")) {
         throw new UcxException(s"Don't get a worker address for $executorId")
       }
@@ -229,7 +232,7 @@ case class UcxWorkerWrapper(worker: UcpWorker, transport: UcxShuffleTransport, i
             workerAddress.clear()
           }
         }, MEMORY_TYPE.UCS_MEMORY_TYPE_HOST)
-      flushRequests.add(ep.flushNonBlocking(null))
+      //flushRequests.add(ep.flushNonBlocking(null))
       ep
     })
   }
@@ -264,7 +267,7 @@ case class UcxWorkerWrapper(worker: UcpWorker, transport: UcxShuffleTransport, i
     val address = UnsafeUtils.getAdress(buffer)
     val dataAddress = address + headerSize
 
-    ep.sendAmNonBlocking(0, address,
+    val sendRequest = ep.sendAmNonBlocking(0, address,
       headerSize, dataAddress, buffer.capacity() - headerSize,
       UcpConstants.UCP_AM_SEND_FLAG_EAGER, new UcxCallback() {
        override def onSuccess(request: UcpRequest): Unit = {
@@ -274,7 +277,7 @@ case class UcxWorkerWrapper(worker: UcpWorker, transport: UcxShuffleTransport, i
        }
      }, MEMORY_TYPE.UCS_MEMORY_TYPE_HOST)
 
-    worker.progressRequest(ep.flushNonBlocking(null))
+    worker.progressRequest(sendRequest)
     Seq(request)
   }
 

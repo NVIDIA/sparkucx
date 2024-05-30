@@ -132,7 +132,7 @@ object UcxPerfBenchmark extends App with Logging {
         for (o <- 0 until options.numOutstanding) {
           val fileIdx = if (options.randOrder) rnd.nextInt(options.files.length) else (b+o) % options.files.length
           val blockIdx = if (options.randOrder) rnd.nextInt(blocksPerFile) else (b+o) % blocksPerFile
-          blocks(o) = UcxShuffleBockId(0, fileIdx, blockIdx)
+          blocks(o) = UcxShuffleBlockId(0, fileIdx, blockIdx)
           callbacks(o) = (result: OperationResult) => {
             result.getData.close()
             val stats = result.getStats.get
@@ -179,7 +179,7 @@ object UcxPerfBenchmark extends App with Logging {
     for (fileIdx <- options.files.indices) {
       for (blockIdx <- 0 until (options.numBlocks /  options.files.length)) {
 
-        val blockId = UcxShuffleBockId(0, fileIdx, blockIdx)
+        val blockId = UcxShuffleBlockId(0, fileIdx, blockIdx)
         val block = new Block {
           private val channel = channels(fileIdx)
           private val fileOffset = blockIdx * options.blockSize

@@ -7,7 +7,7 @@ package org.apache.spark.shuffle.compat.spark_3_0
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
 import org.apache.spark.network.shuffle.{BlockFetchingListener, BlockStoreClient, DownloadFileManager}
-import org.apache.spark.shuffle.ucx.{OperationCallback, OperationResult, UcxShuffleBockId, UcxShuffleTransport}
+import org.apache.spark.shuffle.ucx.{OperationCallback, OperationResult, UcxShuffleBlockId, UcxShuffleTransport}
 import org.apache.spark.shuffle.utils.UnsafeUtils
 import org.apache.spark.storage.{BlockId => SparkBlockId, ShuffleBlockId => SparkShuffleBlockId}
 
@@ -23,11 +23,11 @@ class UcxShuffleClient(val transport: UcxShuffleTransport, mapId2PartitionId: Ma
       return
     }
 
-    val ucxBlockIds = Array.ofDim[UcxShuffleBockId](blockIds.length)
+    val ucxBlockIds = Array.ofDim[UcxShuffleBlockId](blockIds.length)
     val callbacks = Array.ofDim[OperationCallback](blockIds.length)
     for (i <- blockIds.indices) {
       val blockId = SparkBlockId.apply(blockIds(i)).asInstanceOf[SparkShuffleBlockId]
-      ucxBlockIds(i) = UcxShuffleBockId(blockId.shuffleId, mapId2PartitionId(blockId.mapId), blockId.reduceId)
+      ucxBlockIds(i) = UcxShuffleBlockId(blockId.shuffleId, mapId2PartitionId(blockId.mapId), blockId.reduceId)
       callbacks(i) = (result: OperationResult) => {
         val memBlock = result.getData
         val buffer = UnsafeUtils.getByteBufferView(memBlock.address, memBlock.size.toInt)

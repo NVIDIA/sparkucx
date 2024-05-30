@@ -10,6 +10,7 @@ import org.apache.spark.shuffle.ucx.memory.UcxHostBounceBuffersPool
 import org.apache.spark.shuffle.ucx.rpc.GlobalWorkerRpcThread
 import org.apache.spark.shuffle.ucx.utils.{SerializableDirectBuffer, SerializationUtils}
 import org.apache.spark.shuffle.utils.UnsafeUtils
+import org.apache.spark.util.ThreadUtils
 import org.openucx.jucx.UcxException
 import org.openucx.jucx.ucp._
 import org.openucx.jucx.ucs.UcsConstants
@@ -52,7 +53,7 @@ class UcxStats extends OperationStats {
   override def recvSize: Long = receiveSize
 }
 
-case class UcxShuffleBockId(shuffleId: Int, mapId: Int, reduceId: Int) extends BlockId {
+case class UcxShuffleBlockId(shuffleId: Int, mapId: Int, reduceId: Int) extends BlockId {
   override def serializedSize: Int = 12
 
   override def serialize(byteBuffer: ByteBuffer): Unit = {
@@ -62,12 +63,12 @@ case class UcxShuffleBockId(shuffleId: Int, mapId: Int, reduceId: Int) extends B
   }
 }
 
-object UcxShuffleBockId {
-  def deserialize(byteBuffer: ByteBuffer): UcxShuffleBockId = {
+object UcxShuffleBlockId {
+  def deserialize(byteBuffer: ByteBuffer): UcxShuffleBlockId = {
     val shuffleId = byteBuffer.getInt
     val mapId = byteBuffer.getInt
     val reduceId = byteBuffer.getInt
-    UcxShuffleBockId(shuffleId, mapId, reduceId)
+    UcxShuffleBlockId(shuffleId, mapId, reduceId)
   }
 }
 
@@ -195,21 +196,26 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
    * connection establishment outside of UcxShuffleManager.
    */
   override def addExecutor(executorId: ExecutorId, workerAddress: ByteBuffer): Unit = {
+    logInfo(s"Adding executor $executorId")
     executorAddresses.put(executorId, workerAddress)
-    allocatedClientWorkers.foreach(w => {
+    allocatedClientWorkers.par.foreach(w => {
       w.getConnection(executorId)
-      w.progressConnect()
+      //w.progressConnect()
     })
+    logInfo(s"Added executor $executorId")
   }
 
   def addExecutors(executorIdsToAddress: Map[ExecutorId, SerializableDirectBuffer]): Unit = {
+    logInfo(s"Adding executors: ${executorIdsToAddress.keys.mkString(",")}")
     executorIdsToAddress.foreach {
       case (executorId, address) => executorAddresses.put(executorId, address.value)
     }
+    preConnect()
+    logInfo(s"Added executors: ${executorIdsToAddress.keys.mkString(",")}")
   }
 
-  def preConnect(): Unit = {
-    allocatedClientWorkers.foreach(_.preconnect())
+  private def preConnect(): Unit = ThreadUtils.runInNewThread("Pre connection thread", true) {
+    allocatedClientWorkers.par.foreach(_.preconnect())
   }
 
   /**
@@ -252,7 +258,7 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
 
   def unregisterShuffle(shuffleId: Int): Unit = {
     registeredBlocks.keysIterator.foreach(bid =>
-      if (bid.asInstanceOf[UcxShuffleBockId].shuffleId == shuffleId) {
+      if (bid.asInstanceOf[UcxShuffleBlockId].shuffleId == shuffleId) {
         registeredBlocks.remove(bid)
       }
     )
@@ -282,7 +288,7 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
 
     // 1. Deserialize blockIds from header
     while (buffer.remaining() > 0) {
-      val blockId = UcxShuffleBockId.deserialize(buffer)
+      val blockId = UcxShuffleBlockId.deserialize(buffer)
       if (!registeredBlocks.contains(blockId)) {
         throw new UcxException(s"$blockId is not registered")
       }
@@ -307,7 +313,4 @@ class UcxShuffleTransport(var ucxShuffleConf: UcxShuffleConf = null, var executo
     allocatedClientWorkers((Thread.currentThread().getId % allocatedClientWorkers.length).toInt).progress()
   }
 
-  def progressConnect(): Unit = {
-    allocatedClientWorkers.par.foreach(_.progressConnect())
-  }
 }
