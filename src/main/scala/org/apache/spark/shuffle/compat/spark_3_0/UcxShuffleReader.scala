@@ -104,40 +104,10 @@ private[spark] class UcxShuffleReader[K, C](handle: BaseShuffleHandle[K, _, C],
 
     val wrappedStreams = shuffleIterator.toCompletionIterator
 
-
-    // Ucx shuffle logic
-    // Java reflection to get access to private results queue
-    val queueField = shuffleIterator.getClass.getDeclaredField(
-      "org$apache$spark$storage$ShuffleBlockFetcherIterator$$results")
-    queueField.setAccessible(true)
-    val resultQueue = queueField.get(shuffleIterator).asInstanceOf[LinkedBlockingQueue[_]]
-
-    // Do progress if queue is empty before calling next on ShuffleIterator
-    val ucxWrappedStream = new Iterator[(BlockId, InputStream)] {
-      override def next(): (BlockId, InputStream) = {
-        val startTime = System.nanoTime()
-        while (resultQueue.isEmpty) {
-          transport.progress()
-        }
-        val fetchWaitTime = System.nanoTime() - startTime
-        readMetrics.incFetchWaitTime(TimeUnit.NANOSECONDS.toMillis(fetchWaitTime))
-        wrappedStreams.next()
-      }
-
-      override def hasNext: Boolean = {
-        val result = wrappedStreams.hasNext
-        if (!result) {
-          shuffleClient.close()
-        }
-        result
-      }
-    }
-    // End of ucx shuffle logic
-
     val serializerInstance = dep.serializer.newInstance()
 
     // Create a key/value iterator for each stream
-    val recordIter = ucxWrappedStream.flatMap { case (blockId, wrappedStream) =>
+    val recordIter = wrappedStreams.flatMap { case (blockId, wrappedStream) =>
       // Note: the asKeyValueIterator below wraps a key/value iterator inside of a
       // NextIterator. The NextIterator makes sure that close() is called on the
       // underlying InputStream when all records have been read.

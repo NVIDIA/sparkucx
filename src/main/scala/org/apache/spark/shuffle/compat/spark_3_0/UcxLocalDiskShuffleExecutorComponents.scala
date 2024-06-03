@@ -23,9 +23,7 @@ class UcxLocalDiskShuffleExecutorComponents(sparkConf: SparkConf)
 
   override def initializeExecutor(appId: String, execId: String, extraConfigs: util.Map[String, String]): Unit = {
     val ucxShuffleManager = SparkEnv.get.shuffleManager.asInstanceOf[UcxShuffleManager]
-    while (ucxShuffleManager.ucxTransport == null) {
-      Thread.sleep(5)
-    }
+    ucxShuffleManager.awaitUcxTransport()
     blockResolver = ucxShuffleManager.shuffleBlockResolver
   }
 
