@@ -91,4 +91,11 @@ class UcxShuffleConf(sparkConf: SparkConf) extends SparkConf {
     .createWithDefault(50)
 
   lazy val maxBlocksPerRequest: Int = sparkConf.getInt(MAX_BLOCKS_IN_FLIGHT.key, MAX_BLOCKS_IN_FLIGHT.defaultValue.get)
+
+  private lazy val MAX_REPLY_SIZE = ConfigBuilder(getUcxConf("maxReplySize"))
+    .doc("Maximum size of fetch reply message")
+    .bytesConf(ByteUnit.MiB)
+    .createWithDefault(32)
+
+  lazy val maxReplySize: Long = sparkConf.getSizeAsBytes(MAX_REPLY_SIZE.key, MAX_REPLY_SIZE.defaultValueString)
 }

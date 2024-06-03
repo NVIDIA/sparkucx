@@ -44,8 +44,8 @@ abstract class CommonUcxShuffleBlockResolver(ucxShuffleManager: CommonUcxShuffle
         val block = new Block {
           private val fileOffset = offset
 
-          override def getBlock(byteBuffer: ByteBuffer): Unit = {
-            channel.read(byteBuffer, fileOffset)
+          override def getBlock(byteBuffer: ByteBuffer, offset: Long): Unit = {
+            channel.read(byteBuffer, fileOffset + offset)
           }
 
           override def getSize: Long = blockLength
