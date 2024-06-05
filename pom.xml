@@ -45,6 +45,8 @@ See file LICENSE for terms.
               <excludes>
                 <exclude>**/spark_2_1/**</exclude>
                 <exclude>**/spark_3_0/**</exclude>
+                <exclude>org/apache/spark/network/**</exclude>
+                <exclude>org/apache/spark/shuffle/ucx/external/server/**</exclude>
               </excludes>
             </configuration>
           </plugin>
@@ -71,6 +73,8 @@ See file LICENSE for terms.
               <excludes>
                 <exclude>**/spark_2_1/**</exclude>
                 <exclude>**/spark_2_4/**</exclude>
+                <exclude>org/apache/spark/network/**</exclude>
+                <exclude>org/apache/spark/shuffle/ucx/external/server/**</exclude>
               </excludes>
             </configuration>
           </plugin>
@@ -83,6 +87,93 @@ See file LICENSE for terms.
         <sonar.exclusions>**/spark_2_1/**, **/spark_2_4/**</sonar.exclusions>
       </properties>
     </profile>
+    <profile>
+      <id>sparkess-2.4</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>net.alchim31.maven</groupId>
+            <artifactId>scala-maven-plugin</artifactId>
+            <configuration>
+              <includes>
+                <include>org/apache/spark/network/**</include>
+                <include>org/apache/spark/shuffle/ucx/external/**</include>
+                <include>org/apache/spark/shuffle/ucx/memory/UcxLimitedMemPool.scala</include>
+                <include>org/apache/spark/shuffle/ucx/ShuffleTransport.scala</include>
+                <include>org/apache/spark/shuffle/utils/**</include>
+              </includes>
+              <excludes>
+                <exclude>**/spark_3_0/**</exclude>
+                <exclude>org/apache/spark/shuffle/ucx/external/client/**</exclude>
+              </excludes>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+      <properties>
+        <spark.version>2.4.0</spark.version>
+        <sonar.exclusions>**/spark_3_0/**, **/spark_2_1/**</sonar.exclusions>
+        <scala.version>2.11.12</scala.version>
+        <scala.compat.version>2.11</scala.compat.version>
+        <fasterxml.jackson.version>2.6.7</fasterxml.jackson.version>
+      </properties>
+      <dependencies>
+        <dependency>
+          <groupId>org.scala-lang</groupId>
+          <artifactId>scala-library</artifactId>
+          <version>${scala.version}</version>
+        </dependency>
+        <dependency>
+          <groupId>com.fasterxml.jackson.core</groupId>
+          <artifactId>jackson-databind</artifactId>
+          <version>${fasterxml.jackson.version}</version>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>sparkess-3.0</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>net.alchim31.maven</groupId>
+            <artifactId>scala-maven-plugin</artifactId>
+            <configuration>
+              <includes>
+                <include>org/apache/spark/network/**</include>
+                <include>org/apache/spark/shuffle/ucx/external/**</include>
+                <include>org/apache/spark/shuffle/ucx/memory/UcxLimitedMemPool.scala</include>
+                <include>org/apache/spark/shuffle/ucx/ShuffleTransport.scala</include>
+                <include>org/apache/spark/shuffle/utils/**</include>
+              </includes>
+              <excludes>
+                <exclude>**/spark_2_4/**</exclude>
+                <exclude>org/apache/spark/shuffle/ucx/external/client/**</exclude>
+              </excludes>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+      <properties>
+        <spark.version>3.0.1</spark.version>
+        <scala.version>2.12.10</scala.version>
+        <scala.compat.version>2.12</scala.compat.version>
+        <sonar.exclusions>**/spark_2_1/**, **/spark_2_4/**</sonar.exclusions>
+        <fasterxml.jackson.version>2.10.0</fasterxml.jackson.version>
+      </properties>
+      <dependencies>
+        <dependency>
+          <groupId>org.scala-lang</groupId>
+          <artifactId>scala-library</artifactId>
+          <version>${scala.version}</version>
+        </dependency>
+        <dependency>
+          <groupId>com.fasterxml.jackson.core</groupId>
+          <artifactId>jackson-databind</artifactId>
+          <version>${fasterxml.jackson.version}</version>
+        </dependency>
+      </dependencies>
+    </profile>
+
   </profiles>
 
 
@@ -94,9 +185,15 @@ See file LICENSE for terms.
       <scope>provided</scope>
     </dependency>
     <dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-network-yarn_${scala.compat.version}</artifactId>
+      <version>${spark.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>org.openucx</groupId>
       <artifactId>jucx</artifactId>
-      <version>1.13.1</version>
+      <version>1.16.0</version>
     </dependency>
   </dependencies>
 
